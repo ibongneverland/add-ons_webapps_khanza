@@ -75,14 +75,13 @@ try {
 } catch (Exception $e) {
     }
 function check_tables_exist($pdo) {
+    // KINI HANYA MENGECEK TABEL MAPPING (Wajib untuk menyimpan data user)
+    // Tabel referensi (seperti kfa, loinc, snomed) kini menjadi OPSIONAL (apabila menggunakan 100% API).
     $required = [
-        'satu_sehat_ref_form', 
-        'satu_sehat_ref_kfa', 
-        'satu_sehat_ref_loinc', 
-        'satu_sehat_ref_route', 
-        'satu_sehat_ref_snomed',
-        'satu_sehat_ref_numerator',
-        'satu_sehat_ref_denominator'
+        'satu_sehat_mapping_obat',
+        'satu_sehat_mapping_lab',
+        'satu_sehat_mapping_radiologi',
+        'satu_sehat_mapping_vaksin'
     ];
     foreach ($required as $table) {
         try {

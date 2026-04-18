@@ -123,9 +123,25 @@ try {
     // ========================================================
     if ($action === 'search_loinc') {
         $q = isset($_GET['term']) ? trim($_GET['term']) : '';
+        
+        require_once dirname(__DIR__) . '/kfa_api_helper.php';
+        require_once dirname(__DIR__) . '/fhir_terminology_helper.php';
+        $cred       = kfa_load_credential();
+        $searchMode = ($cred && !empty($cred['kfa_search_mode'])) ? $cred['kfa_search_mode'] : 'database';
+        
+        $isFallback = false;
+        if ($searchMode === 'api') {
+            $apiData = fhir_search_loinc($q);
+            if ($apiData['status'] === 'success') {
+                echo json_encode(['results' => $apiData['results'], 'source' => 'api']);
+                exit;
+            }
+            $isFallback = true;
+        }
+
         $stmt = $pdo->prepare("SELECT loinc_num as id, CONCAT(loinc_num,' - ',long_common_name) as text, long_common_name as display FROM satu_sehat_ref_loinc WHERE long_common_name LIKE :q OR loinc_num LIKE :q LIMIT 20");
         $stmt->execute([':q' => "%$q%"]);
-        echo json_encode(['results' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
+        echo json_encode(['results' => $stmt->fetchAll(PDO::FETCH_ASSOC), 'source' => $isFallback ? 'fallback' : 'database']);
         exit;
     }
 
@@ -134,9 +150,25 @@ try {
     // ========================================================
     if ($action === 'search_snomed') {
         $q = isset($_GET['term']) ? trim($_GET['term']) : '';
+        
+        require_once dirname(__DIR__) . '/kfa_api_helper.php';
+        require_once dirname(__DIR__) . '/fhir_terminology_helper.php';
+        $cred       = kfa_load_credential();
+        $searchMode = ($cred && !empty($cred['kfa_search_mode'])) ? $cred['kfa_search_mode'] : 'database';
+        
+        $isFallback = false;
+        if ($searchMode === 'api') {
+            $apiData = fhir_search_snomed($q);
+            if ($apiData['status'] === 'success') {
+                echo json_encode(['results' => $apiData['results'], 'source' => 'api']);
+                exit;
+            }
+            $isFallback = true;
+        }
+
         $stmt = $pdo->prepare("SELECT conceptId as id, CONCAT(conceptId,' - ',term) as text, term as display FROM satu_sehat_ref_snomed WHERE term LIKE :q OR conceptId LIKE :q LIMIT 20");
         $stmt->execute([':q' => "%$q%"]);
-        echo json_encode(['results' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
+        echo json_encode(['results' => $stmt->fetchAll(PDO::FETCH_ASSOC), 'source' => $isFallback ? 'fallback' : 'database']);
         exit;
     }
 

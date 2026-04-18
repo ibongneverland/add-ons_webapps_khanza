@@ -66,16 +66,7 @@ $moduls = [
         'url'     => 'modules/vaksin/index.php',
         'badge'   => 'CVX',
     ],
-    [
-        'judul'   => 'Referensi Data',
-        'deskripsi' => 'CRUD Bentuk Sediaan, Rute, Satuan Numerator (UCUM), dan Satuan Denominator (HL7).',
-        'ikon'    => 'fa-database',
-        'gradien' => 'linear-gradient(135deg,#0891b2,#06b6d4)',
-        'glow'    => 'rgba(8,145,178,0.35)',
-        'kolom'   => '_ref_data', // kolom khusus, ditangani manual di bawah
-        'url'     => 'modules/referensi/index.php',
-        'badge'   => 'REF',
-    ],
+
 ];
 ?>
 <!DOCTYPE html>
@@ -243,14 +234,8 @@ $moduls = [
     <!-- Kartu Modul -->
     <div class="row g-4 justify-content-center mb-5">
         <?php foreach ($moduls as $mod):
-            // Cek hak akses: admin = always true, kolom khusus _ref_data = cek obat atau vaksin
-            if ($mod['kolom'] === '_ref_data') {
-                $punya_akses = $is_admin ||
-                    (isset($hak_akses['satu_sehat_mapping_obat'])   && $hak_akses['satu_sehat_mapping_obat']   === 'true') ||
-                    (isset($hak_akses['satu_sehat_mapping_vaksin']) && $hak_akses['satu_sehat_mapping_vaksin'] === 'true');
-            } else {
-                $punya_akses = $is_admin || (isset($hak_akses[$mod['kolom']]) && $hak_akses[$mod['kolom']] === 'true');
-            }
+            // Cek hak akses
+            $punya_akses = $is_admin || (isset($hak_akses[$mod['kolom']]) && $hak_akses[$mod['kolom']] === 'true');
         ?>
         <div class="col-md-6 col-lg-3">
             <a href="<?= $punya_akses ? $mod['url'] : '#' ?>"
@@ -272,15 +257,16 @@ $moduls = [
         </div>
         <?php endforeach; ?>
         <?php if ($is_admin): ?>
+
         <div class="col-md-6 col-lg-3">
-            <a href="modules/admin_ref/index.php" class="modul-card">
-                <div class="modul-icon" style="background: linear-gradient(135deg,#1e1b4b,#4f46e5); box-shadow: 0 8px 24px rgba(79,70,229,0.4);">
-                    <i class="fa-solid fa-shield-halved"></i>
+            <a href="modules/super_admin/satusehat_setting/index.php" class="modul-card">
+                <div class="modul-icon" style="background: linear-gradient(135deg,#0f766e,#14b8a6); box-shadow: 0 8px 24px rgba(20,184,166,0.4);">
+                    <i class="fa-solid fa-gear"></i>
                 </div>
-                <h5>Admin Referensi</h5>
-                <p>CRUD KFA, LOINC, dan SNOMED-CT. Kelola data referensi master yang sangat besar dengan lazy loading.</p>
+                <h5>Setting SatuSehat</h5>
+                <p>Atur credential API SatuSehat (Organization ID, Client ID, Client Secret) dan mode pencarian KFA.</p>
                 <div class="d-flex align-items-center justify-content-between">
-                    <span class="modul-badge" style="background: linear-gradient(135deg,#1e1b4b,#4f46e5);">MASTER</span>
+                    <span class="modul-badge" style="background: linear-gradient(135deg,#0f766e,#14b8a6);">API</span>
                     <i class="fa fa-arrow-right arrow-icon"></i>
                 </div>
             </a>

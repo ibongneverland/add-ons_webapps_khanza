@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * modules/lab/index.php — Halaman Mapping Laboratorium
  */
@@ -105,12 +105,14 @@ check_module_access('satu_sehat_mapping_lab');
                     <div class="mb-3">
                         <label class="form-label fw-bold text-primary">1. Kode Pemeriksaan (LOINC)</label>
                         <select class="form-select" id="sel_loinc" name="loinc_code" style="width:100%" required></select>
+                        <div class="mt-1"><span id="loinc_source_badge" class="badge bg-secondary" style="font-size:.7rem;"><i class="fa fa-database me-1"></i>Sumber: Database Lokal</span></div>
                         <input type="hidden" name="loinc_display" id="m_loinc_display">
                         <div class="form-text">Cari dalam Bahasa Inggris. System: <i>http://loinc.org</i></div>
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-bold text-success">2. Spesimen/Sampel (SNOMED-CT)</label>
                         <select class="form-select" id="sel_snomed" name="snomed_code" style="width:100%" required></select>
+                        <div class="mt-1"><span id="snomed_source_badge" class="badge bg-secondary" style="font-size:.7rem;"><i class="fa fa-database me-1"></i>Sumber: Database Lokal</span></div>
                         <input type="hidden" name="snomed_display" id="m_snomed_display">
                         <div class="form-text">Contoh: Serum, Plasma, Urine. System: <i>http://snomed.info/sct</i></div>
                     </div>
@@ -198,17 +200,51 @@ $(function() {
     $('#btnCariServer').click(function() { table.ajax.reload(); });
     $('#keyword_pemeriksaan').on('keyup', function(e) { if(e.key==='Enter') table.ajax.reload(); });
 
-    $('#sel_loinc').select2({ theme:'bootstrap-5', dropdownParent:$('#modalMapping'), placeholder:'Cari Kode LOINC...', minimumInputLength:2,
-        ajax: { url:'ajax.php?action=search_loinc', dataType:'json', delay:250, data:function(p){return{term:p.term};}, processResults:function(d){return{results:d.results};} }
+    // === FHIR Badge helper (4 state) ===
+    function fhirSetBadge(id, state) {
+        var b = $('#' + id);
+        b.removeClass('bg-secondary bg-success bg-warning bg-info text-dark');
+        if (state === 'loading')       b.addClass('bg-info').html('<i class="fa fa-spinner fa-spin me-1"></i>Menghubungi API FHIR...');
+        else if (state === 'api')      b.addClass('bg-success').html('<i class="fa fa-cloud me-1"></i>Sumber: API FHIR Terminology (Online)');
+        else if (state === 'fallback') b.addClass('bg-warning text-dark').html('<i class="fa fa-triangle-exclamation me-1"></i>API gagal &mdash; fallback Database Lokal');
+        else                           b.addClass('bg-secondary').html('<i class="fa fa-database me-1"></i>Sumber: Database Lokal');
+    }
+
+    $('#sel_loinc').select2({
+        theme: 'bootstrap-5', dropdownParent: $('#modalMapping'),
+        placeholder: 'Cari Kode LOINC...', minimumInputLength: 2,
+        ajax: {
+            url: 'ajax.php?action=search_loinc', dataType: 'json', delay: 300,
+            data: function(p) { return { term: p.term }; },
+            beforeSend: function() { fhirSetBadge('loinc_source_badge', 'loading'); },
+            processResults: function(d) {
+                fhirSetBadge('loinc_source_badge', d.source || 'database');
+                return { results: d.results };
+            },
+            error: function() { fhirSetBadge('loinc_source_badge', 'fallback'); }
+        }
     }).on('select2:select', function(e) { $('#m_loinc_display').val(e.params.data.display); });
 
-    $('#sel_snomed').select2({ theme:'bootstrap-5', dropdownParent:$('#modalMapping'), placeholder:'Cari Spesimen...', minimumInputLength:2,
-        ajax: { url:'ajax.php?action=search_snomed', dataType:'json', delay:250, data:function(p){return{term:p.term};}, processResults:function(d){return{results:d.results};} }
+    $('#sel_snomed').select2({
+        theme: 'bootstrap-5', dropdownParent: $('#modalMapping'),
+        placeholder: 'Cari Spesimen/Sampel (SNOMED-CT)...', minimumInputLength: 2,
+        ajax: {
+            url: 'ajax.php?action=search_snomed', dataType: 'json', delay: 300,
+            data: function(p) { return { term: p.term }; },
+            beforeSend: function() { fhirSetBadge('snomed_source_badge', 'loading'); },
+            processResults: function(d) {
+                fhirSetBadge('snomed_source_badge', d.source || 'database');
+                return { results: d.results };
+            },
+            error: function() { fhirSetBadge('snomed_source_badge', 'fallback'); }
+        }
     }).on('select2:select', function(e) { $('#m_snomed_display').val(e.params.data.display); });
 
     $('#tableLab tbody').on('click', '.btn-map', function() {
         var id=$(this).data('id'), nama=$(this).data('nama'), loinc=$(this).data('loinc'), ld=$(this).data('loinc-display'), snomed=$(this).data('snomed'), sd=$(this).data('snomed-display');
         $('#m_id_template').val(id); $('#m_nama_pemeriksaan').text(nama); $('#m_nama_copy').text(nama);
+        fhirSetBadge('loinc_source_badge', 'database');
+        fhirSetBadge('snomed_source_badge', 'database');
         $('#sel_loinc').val(null).trigger('change');
         if (loinc) { var o=new Option(loinc+' - '+ld,loinc,true,true); $('#sel_loinc').append(o).trigger('change'); $('#m_loinc_display').val(ld); } else $('#m_loinc_display').val('');
         $('#sel_snomed').val(null).trigger('change');

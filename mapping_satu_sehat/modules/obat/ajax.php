@@ -145,24 +145,84 @@ try {
 
     // ========================================================
     // 2. SEARCH KFA (untuk Select2 AJAX)
+    //    Mode: 'api' = API Kemenkes (real-time, dengan auto-fill)
+    //          'database' = database lokal (default lama)
     // ========================================================
     if ($action === 'search_kfa') {
         $q = isset($_GET['term']) ? trim($_GET['term']) : '';
+
+        // Baca mode dari credential JSON
+        require_once dirname(__DIR__) . '/kfa_api_helper.php';
+        $cred       = kfa_load_credential();
+        $searchMode = ($cred && !empty($cred['kfa_search_mode'])) ? $cred['kfa_search_mode'] : 'database';
+
+        // ---- Mode API ----
+        $isFallback = false;
+        if ($searchMode === 'api' && $cred && !empty($cred['client_id'])) {
+            $apiResults = kfa_search_from_api($cred, $q, 20);
+
+            if ($apiResults !== null) {
+                // Berhasil dari API — return dengan flag source=api untuk frontend auto-fill
+                echo json_encode([
+                    'results' => $apiResults,
+                    'source'  => 'api'
+                ]);
+                exit;
+            }
+            // API gagal setelah retry → catat sebagai fallback
+            $isFallback = true;
+        }
+
+        // ---- Mode Database (atau fallback dari API) ----
         $stmt = $pdo->prepare(
             "SELECT kfa_code as id,
                     CONCAT(kfa_code, ' - ', display_name) as text,
-                    display_name
+                    display_name,
+                    '' as route_code,
+                    '' as route_display,
+                    '' as form_code,
+                    '' as form_display,
+                    '' as ucum_code
              FROM satu_sehat_ref_kfa
              WHERE display_name LIKE :q OR kfa_code LIKE :q
              LIMIT 20"
         );
         $stmt->execute([':q' => "%$q%"]);
-        echo json_encode(['results' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
+        echo json_encode([
+            'results' => $stmt->fetchAll(PDO::FETCH_ASSOC),
+            'source'  => $isFallback ? 'fallback' : 'database'
+        ]);
         exit;
     }
 
     // ========================================================
-    // 3. SAVE MAPPING (POST) — Validasi CSRF wajib
+    // 3. REFRESH KFA TOKEN (resusitasi — force clear cache + request fresh token)
+    // ========================================================
+    if ($action === 'refresh_kfa_token') {
+        validate_csrf();
+        require_once dirname(__DIR__) . '/kfa_api_helper.php';
+        $cred = kfa_load_credential();
+        if (!$cred || empty($cred['client_id']) || empty($cred['client_secret'])) {
+            echo json_encode(['status' => 'error', 'message' => 'Credential belum dikonfigurasi oleh Super Admin.']);
+            exit;
+        }
+        // Hapus token cache lama
+        unset($_SESSION[KFA_SESSION_TOKEN_KEY], $_SESSION[KFA_SESSION_EXPIRY_KEY]);
+        // Request token baru (bukan via cache)
+        $urls  = kfa_get_base_urls($cred);
+        $token = kfa_fetch_token($cred, $urls);
+        if ($token === null) {
+            echo json_encode(['status' => 'error', 'message' => 'Gagal mendapatkan token baru dari API Kemenkes. Periksa koneksi internet server dan credential di Setting SatuSehat.']);
+            exit;
+        }
+        $_SESSION[KFA_SESSION_TOKEN_KEY]  = $token;
+        $_SESSION[KFA_SESSION_EXPIRY_KEY] = time() + (55 * 60);
+        echo json_encode(['status' => 'success', 'message' => 'Token KFA berhasil diperbarui! Silakan cari obat kembali.']);
+        exit;
+    }
+
+    // ========================================================
+    // 4. SAVE MAPPING (POST) — Validasi CSRF wajib
     // ========================================================
     if ($action === 'save_mapping') {
         validate_csrf(); // Terminate 403 jika CSRF tidak cocok

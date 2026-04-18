@@ -112,24 +112,35 @@ if ($action === 'run_import') {
 }
 
 // Cek status database saat ini
-$missing_tables = [];
-$check_tables = [
-    'satu_sehat_ref_form', 'satu_sehat_ref_route', 'satu_sehat_ref_kfa', 'satu_sehat_ref_loinc', 'satu_sehat_ref_snomed',
-    'satu_sehat_ref_numerator', 'satu_sehat_ref_denominator',
+$missing_mapping_tables = [];
+$check_mapping_tables = [
     'satu_sehat_mapping_obat', 'satu_sehat_mapping_lab', 'satu_sehat_mapping_radiologi', 'satu_sehat_mapping_vaksin'
 ];
 
-foreach ($check_tables as $tb) {
+$missing_ref_tables = [];
+$check_ref_tables = [
+    'satu_sehat_ref_form', 'satu_sehat_ref_route', 'satu_sehat_ref_kfa', 'satu_sehat_ref_loinc', 'satu_sehat_ref_snomed',
+    'satu_sehat_ref_numerator', 'satu_sehat_ref_denominator'
+];
+
+// Cek mapping
+foreach ($check_mapping_tables as $tb) {
     try {
         $res = $pdo->query("SHOW TABLES LIKE '$tb'");
-        if ($res->rowCount() === 0) {
-            $missing_tables[] = $tb;
-        }
-    } catch (Exception $e) {
-        $missing_tables[] = $tb;
-    }
+        if ($res->rowCount() === 0) $missing_mapping_tables[] = $tb;
+    } catch (Exception $e) { $missing_mapping_tables[] = $tb; }
 }
-$is_safe = (count($missing_tables) === 0);
+
+// Cek referensi
+foreach ($check_ref_tables as $tb) {
+    try {
+        $res = $pdo->query("SHOW TABLES LIKE '$tb'");
+        if ($res->rowCount() === 0) $missing_ref_tables[] = $tb;
+    } catch (Exception $e) { $missing_ref_tables[] = $tb; }
+}
+
+$is_mapping_safe = (count($missing_mapping_tables) === 0);
+$is_ref_safe     = (count($missing_ref_tables) === 0);
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -174,11 +185,11 @@ $is_safe = (count($missing_tables) === 0);
                 <a href="index.php" class="nav-back"><i class="fa fa-arrow-left me-2"></i>Kembali ke Dashboard</a>
                 <h2 class="mb-1"><i class="fa-solid fa-database me-2 text-emerald-300"></i>Web Installer Database</h2>
                 <p class="mb-0 text-emerald-100">Setup tabel referensi & mapping <?= htmlspecialchars($APP_INSTANSI, ENT_QUOTES, 'UTF-8') ?> (Khusus Super Admin)</p>
-                
-                <?php if (!$is_safe): ?>
+
+                <?php if (!$is_mapping_safe || !$is_ref_safe): ?>
                 <div class="alert alert-warning border-0 mt-3 mb-0 py-2 small d-flex align-items-center" style="background: rgba(255,255,255,0.2); color: #fff; border-radius: 10px;">
                     <i class="fa fa-triangle-exclamation me-2"></i>
-                    Status: Beberapa tabel referensi belum terdeteksi. Silakan jalankan instalasi.
+                    Status: Beberapa tabel referensi belum terdeteksi. Silakan pilih mode instalasi.
                 </div>
                 <?php endif; ?>
             </div>
@@ -191,72 +202,121 @@ $is_safe = (count($missing_tables) === 0);
 
 <div class="container pb-5">
     <div class="row justify-content-center">
-        <div class="col-lg-8">
+        <div class="col-lg-10">
             <div class="card p-4">
-                <?php if ($is_safe): ?>
+                <?php if ($is_mapping_safe && $is_ref_safe): ?>
                     <div class="text-center py-4">
                         <i class="fa fa-check-circle fa-4x text-success mb-3"></i>
                         <h4 class="fw-bold">Database Sudah Lengkap!</h4>
-                        <p class="text-muted">Semua tabel referensi dan mapping yang dibutuhkan sudah terinstall di database Khanza Anda. Tidak ada tindakan lebih lanjut yang diperlukan.</p>
+                        <p class="text-muted">Semua tabel mapping dan tabel referensi (Kamus KFA, LOINC, dll) sudah terinstall. Sistem siap 100%.</p>
                         <hr>
-                        <a href="index.php" class="btn btn-emerald px-4 shadow-sm" style="background:#10b981; color:white; border-radius:20px; font-weight:600;">Kembali beraktivitas</a>
+                        <a href="index.php" class="btn btn-emerald px-4 shadow-sm" style="background:#10b981; color:white; border-radius:20px; font-weight:600;">Kembali ke Dashboard</a>
                     </div>
                 <?php else: ?>
-                    <h5 class="fw-bold mb-3">Beberapa Tabel Belum Ditemukan:</h5>
-                    <div class="mb-4">
-                        <?php foreach($missing_tables as $mt): ?>
-                            <span class="badge bg-danger bg-opacity-10 text-danger border border-danger-subtle me-1 mb-1 px-3 py-2"><?= $mt ?></span>
-                        <?php endforeach; ?>
-                    </div>
-                    
-                    <hr>
-                    <p class="text-muted small mb-4">
-                        <i class="fa fa-info-circle text-primary me-1"></i> Klik tombol <strong>Mulai Instalasi</strong> di bawah. Script akan mengimpor file SQL (KFA, LOINC, SNOMED) dan membuat tabel target secara berurutan. Harap biarkan tab ini terbuka sampai proses selesai (terutama saat impor KFA yang cukup besar).
-                    </p>
-
-                    <!-- Indikator Proses -->
-                    <div id="install-steps">
-                        <div class="step-box" id="step-form" data-step="form">
-                            <div class="fw-semibold text-secondary">1. Import Tabel: satu_sehat_ref_form.sql</div>
-                            <i class="fa fa-circle status-icon pending"></i>
-                        </div>
-                        <div class="step-box" id="step-route" data-step="route">
-                            <div class="fw-semibold text-secondary">2. Import Tabel: satu_sehat_ref_route.sql</div>
-                            <i class="fa fa-circle status-icon pending"></i>
-                        </div>
-                        <div class="step-box" id="step-snomed" data-step="snomed">
-                            <div class="fw-semibold text-secondary">3. Import Tabel: satu_sehat_ref_snomed.sql</div>
-                            <i class="fa fa-circle status-icon pending"></i>
-                        </div>
-                        <div class="step-box" id="step-loinc" data-step="loinc">
-                            <div class="fw-semibold text-secondary">4. Import Tabel: satu_sehat_ref_loinc.sql (Besar)</div>
-                            <i class="fa fa-circle status-icon pending"></i>
-                        </div>
-                        <div class="step-box" id="step-kfa" data-step="kfa">
-                            <div class="fw-semibold text-secondary">5. Import Tabel: satu_sehat_ref_kfa.sql (Besar)</div>
-                            <i class="fa fa-circle status-icon pending"></i>
-                        </div>
-                        <div class="step-box" id="step-tables" data-step="tables">
-                            <div class="fw-semibold text-secondary">6. Create: Tabel Mapping (Obat, Lab, Rad, Vaksin)</div>
-                            <i class="fa fa-circle status-icon pending"></i>
-                        </div>
-                        <div class="step-box" id="step-numerator" data-step="numerator">
-                            <div class="fw-semibold text-secondary">7. Import Tabel: satu_sehat_ref_numerator.sql (Satuan UCUM)</div>
-                            <i class="fa fa-circle status-icon pending"></i>
-                        </div>
-                        <div class="step-box" id="step-denominator" data-step="denominator">
-                            <div class="fw-semibold text-secondary">8. Import Tabel: satu_sehat_ref_denominator.sql (HL7 DrugForm)</div>
-                            <i class="fa fa-circle status-icon pending"></i>
-                        </div>
+                    <div class="text-center mb-4">
+                        <h4 class="fw-bold text-dark">Pilih Mode Instalasi Database</h4>
+                        <p class="text-muted">Silakan pilih opsi sesuai dengan kebutuhan operasional IT Anda.</p>
                     </div>
 
-                    <div class="text-center mt-4 pt-3 border-top">
-                        <button class="btn px-5 py-2 shadow" id="btnMulai" style="background: linear-gradient(135deg, #047857, #10b981); color: white; border-radius: 30px; font-weight: 700;">
-                            <i class="fa fa-play me-2"></i> Mulai Instalasi
-                        </button>
+                    <div class="row g-4">
+                        <!-- OPSI 1: CLOUD MODE -->
+                        <div class="col-md-6">
+                            <div class="p-4 border rounded-4 h-100 position-relative bg-white" style="box-shadow: 0 4px 12px rgba(0,0,0,0.03);">
+                                <?php if ($is_mapping_safe): ?>
+                                    <div class="position-absolute top-0 end-0 mt-3 me-3">
+                                        <span class="badge bg-success bg-opacity-10 text-success border border-success-subtle"><i class="fa fa-check me-1"></i>Sudah Terinstall</span>
+                                    </div>
+                                <?php endif; ?>
+                                <div style="width: 50px; height: 50px; background: #eff6ff; color: #3b82f6; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; margin-bottom: 1rem;">
+                                    <i class="fa fa-cloud"></i>
+                                </div>
+                                <h5 class="fw-bold">Mode Cloud (API 100%)</h5>
+                                <div class="badge bg-primary mb-3">Rekomendasi</div>
+                                <p class="text-muted small" style="line-height: 1.6;">
+                                    Tipe instalasi <strong>super cepat (&lt; 1 detik)</strong>. Hanya menginstall tabel kosong untuk menyimpan hasil mapping RS Anda.
+                                </p>
+                                <ul class="text-muted small mb-4" style="line-height: 1.6; padding-left: 1.2rem;">
+                                    <li>Tidak mengunduh kamus data kemenkes (hemat ratusan MB).</li>
+                                    <li><strong>Syarat Utama:</strong> Anda <u>WAJIB</u> mensetting Credential API SatuSehat di menu Super Admin setelah ini agar pencarian KFA berjalan lancar lewat internet.</li>
+                                </ul>
+                                <button class="btn btn-primary w-100 rounded-pill fw-bold" id="btnInstallCepat" <?= $is_mapping_safe ? 'disabled' : '' ?>>
+                                    <?= $is_mapping_safe ? 'Sudah Terinstall' : '<i class="fa fa-bolt me-2"></i>Install Tabel Mapping Saja' ?>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- OPSI 2: HIBRID MODE -->
+                        <div class="col-md-6">
+                            <div class="p-4 border rounded-4 h-100 position-relative bg-white" style="box-shadow: 0 4px 12px rgba(0,0,0,0.03);">
+                                <div style="width: 50px; height: 50px; background: #f0fdf4; color: #10b981; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; margin-bottom: 1rem;">
+                                    <i class="fa fa-database"></i>
+                                </div>
+                                <h5 class="fw-bold">Mode Hibrid (Lokal + API)</h5>
+                                <div class="badge bg-secondary mb-3">Fallback System</div>
+                                <p class="text-muted small" style="line-height: 1.6;">
+                                    Tipe instalasi <strong>penuh (butuh waktu agak lama)</strong>. Menginstall tabel mapping sekaligus memasukkan puluhan ribu kamus KFA & LOINC ke database RS.
+                                </p>
+                                <ul class="text-muted small mb-4" style="line-height: 1.6; padding-left: 1.2rem;">
+                                    <li>Aplikasi tetap bisa mencari obat meskipun tidak disetting koneksi API internet.</li>
+                                    <li>Membutuhkan waktu untuk import file SQL besar ke MySQL/MariaDB. Jangan tutup halaman selama proses berlangsung.</li>
+                                </ul>
+                                <button class="btn btn-success w-100 rounded-pill fw-bold" id="btnInstallFull">
+                                    <i class="fa fa-download me-2"></i>Install Full + Referensi
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Progress Area (Hidden initially) -->
+                    <div id="progress-area" class="mt-5" style="display:none;">
+                        <h6 class="fw-bold border-bottom pb-2 mb-3">Status Instalasi</h6>
+                        <div id="install-steps">
+                            <div class="step-box" id="step-tables" data-step="tables">
+                                <div class="fw-semibold text-secondary">A. Membuat Tabel Mapping (Obat, Lab, Rad, Vaksin)</div>
+                                <i class="fa fa-circle status-icon pending"></i>
+                            </div>
+                            <!-- Referensi steps start hidden -->
+                            <div class="step-box ref-step" id="step-form" data-step="form" style="display:none;">
+                                <div class="fw-semibold text-secondary">B1. Import: satu_sehat_ref_form.sql</div>
+                                <i class="fa fa-circle status-icon pending"></i>
+                            </div>
+                            <div class="step-box ref-step" id="step-route" data-step="route" style="display:none;">
+                                <div class="fw-semibold text-secondary">B2. Import: satu_sehat_ref_route.sql</div>
+                                <i class="fa fa-circle status-icon pending"></i>
+                            </div>
+                            <div class="step-box ref-step" id="step-snomed" data-step="snomed" style="display:none;">
+                                <div class="fw-semibold text-secondary">B3. Import: satu_sehat_ref_snomed.sql</div>
+                                <i class="fa fa-circle status-icon pending"></i>
+                            </div>
+                            <div class="step-box ref-step" id="step-loinc" data-step="loinc" style="display:none;">
+                                <div class="fw-semibold text-secondary">B4. Import: satu_sehat_ref_loinc.sql (Besar)</div>
+                                <i class="fa fa-circle status-icon pending"></i>
+                            </div>
+                            <div class="step-box ref-step" id="step-kfa" data-step="kfa" style="display:none;">
+                                <div class="fw-semibold text-secondary">B5. Import: satu_sehat_ref_kfa.sql (Besar)</div>
+                                <i class="fa fa-circle status-icon pending"></i>
+                            </div>
+                            <div class="step-box ref-step" id="step-numerator" data-step="numerator" style="display:none;">
+                                <div class="fw-semibold text-secondary">B6. Import: satu_sehat_ref_numerator.sql</div>
+                                <i class="fa fa-circle status-icon pending"></i>
+                            </div>
+                            <div class="step-box ref-step" id="step-denominator" data-step="denominator" style="display:none;">
+                                <div class="fw-semibold text-secondary">B7. Import: satu_sehat_ref_denominator.sql</div>
+                                <i class="fa fa-circle status-icon pending"></i>
+                            </div>
+                        </div>
                     </div>
                 <?php endif; ?>
             </div>
+            
+            <?php if ($is_mapping_safe && !$is_ref_safe): ?>
+                <div class="text-center mt-4">
+                    <a href="index.php" class="btn btn-outline-secondary rounded-pill px-4" style="background:white;">
+                        <i class="fa fa-arrow-left me-2"></i> Abaikan, Kembali ke Dashboard
+                    </a>
+                </div>
+            <?php endif; ?>
+
         </div>
     </div>
 </div>
@@ -266,13 +326,17 @@ $is_safe = (count($missing_tables) === 0);
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
 $(document).ready(function() {
-    const queue = ['form', 'route', 'snomed', 'loinc', 'kfa', 'tables', 'numerator', 'denominator'];
+    let queue = [];
     
     function processStep(index) {
         if (index >= queue.length) {
-            $('#btnMulai').html('<i class="fa fa-check"></i> Selesai!').removeClass('btn-primary').addClass('btn-success');
-            Swal.fire('Instalasi Selesai!', 'Database mapping Satu Sehat sudah siap digunakan.', 'success').then(() => {
-                window.location.reload();
+            Swal.fire({
+                title: 'Instalasi Selesai!',
+                text: 'Database mapping siap digunakan.',
+                icon: 'success',
+                confirmButtonText: 'Ke Dashboard'
+            }).then(() => {
+                window.location.href = 'index.php';
             });
             return;
         }
@@ -282,12 +346,10 @@ $(document).ready(function() {
         const icon = box.find('.status-icon');
         const text = box.find('div');
 
-        // Marking as running
         box.addClass('active');
         text.removeClass('text-secondary').addClass('text-dark');
         icon.removeClass('pending fa-circle').addClass('running fa-spinner fa-spin');
 
-        // AJAX Request
         $.ajax({
             url: 'installation.php?action=run_import&step=' + stepId,
             method: 'GET',
@@ -296,87 +358,54 @@ $(document).ready(function() {
                 icon.removeClass('running fa-spinner fa-spin');
                 box.removeClass('active');
                 if (res.status === 'success') {
-                    // Success
                     box.addClass('success');
                     text.addClass('text-success');
                     icon.addClass('success fa-check-circle');
-                    
-                    // Lanjut ke antrean berikutnya
                     processStep(index + 1);
                 } else {
-                    // Error tapi kita abaikan dan lanjut aja krn mungkin table already exist.
                     box.addClass('error');
                     text.addClass('text-danger');
                     icon.addClass('error fa-exclamation-triangle');
                     console.log("Warning on " + stepId + ": " + res.message);
-                    
-                    // Tetap lanjut
                     processStep(index + 1);
                 }
             },
             error: function(xhr, status, error) {
                 icon.removeClass('running fa-spinner fa-spin');
                 box.removeClass('active');
-                
-                // Biasanya error kalo PHP timeout atau memory exhaust
                 box.addClass('error');
                 text.addClass('text-danger');
                 icon.addClass('error fa-times-circle');
                 
                 Swal.fire('Error!', 'Proses terhenti di tahap: ' + stepId + '. Server mungkin timeout.', 'error');
-                $('#btnMulai').html('Coba Lagi').prop('disabled', false);
             }
         });
     }
 
-    $('#btnMulai').click(function() {
-        $(this).prop('disabled', true).html('<i class="fa fa-spinner fa-spin me-2"></i> Menginstall...');
-        
-        // Reset the UI before starting
-        $('.step-box').removeClass('active success error');
-        $('.fw-semibold').removeClass('text-dark text-success text-danger').addClass('text-secondary');
-        $('.status-icon').removeClass('running success error fa-spinner fa-spin fa-check-circle fa-times-circle fa-exclamation-triangle')
-                         .addClass('pending fa-circle');
+    $('#btnInstallCepat').click(function() {
+        $('#btnInstallCepat, #btnInstallFull').prop('disabled', true);
+        $('#progress-area').fadeIn();
+        queue = ['tables']; // Hanya install tabel mapping
+        processStep(0);
+    });
 
-        processStep(0); // Mulai dari antrean pertama
+    $('#btnInstallFull').click(function() {
+        $('#btnInstallCepat, #btnInstallFull').prop('disabled', true);
+        $('.ref-step').show(); // Tampilkan kotak indikator referensi
+        $('#progress-area').fadeIn();
+        // Queue lengkap (selalu buat tabel mapping dulu, lalu import sisanya)
+        queue = ['tables', 'form', 'route', 'snomed', 'loinc', 'kfa', 'numerator', 'denominator'];
+        processStep(0);
     });
 });
 </script>
 
-<!-- Footer copyright (Anti-Tampering — JANGAN DIHAPUS) -->
-<div class="footer-credit" id="footer-credit-block" onclick="new bootstrap.Modal(document.getElementById('modalSaweria')).show();">
-    &copy; <a href="https://saweria.co/ichsanleonhart" target="_blank" onclick="event.stopPropagation();">Ichsan Leonhart</a> &nbsp;·&nbsp;
-    <a href="https://wa.me/6285726123777" target="_blank" onclick="event.stopPropagation();">6285726123777</a> &nbsp;·&nbsp;
-    <a href="https://t.me/IchsanLeonhart" target="_blank" onclick="event.stopPropagation();">@IchsanLeonhart</a> &nbsp;·&nbsp;
-    <a href="https://raw.githubusercontent.com/ichsanleonhart/add-ons_webapps_khanza/main/qris-ichsan.png" target="_blank" onclick="event.stopPropagation();">QRIS Donasi</a>
-    — <a href="https://saweria.co/ichsanleonhart" target="_blank" onclick="event.stopPropagation();">saweria.co/ichsanleonhart</a>
+<div class="footer-credit" id="footer-credit-block">
+    &copy; Ichsan Leonhart &nbsp;·&nbsp;
+    <a href="https://wa.me/6285726123777" target="_blank">6285726123777</a> &nbsp;·&nbsp;
+    <a href="https://t.me/IchsanLeonhart" target="_blank">@IchsanLeonhart</a>
+    <br><a href="https://saweria.co/ichsanleonhart" target="_blank" style="color:#8b5cf6; font-weight: 600; margin-top:5px; display:inline-block;"><i class="fa fa-heart"></i> saweria.co/ichsanleonhart</a>
 </div>
-
-<!-- Modal Saweria (Uneg-uneg Mengemis) -->
-<div class="modal fade" id="modalSaweria" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow-lg text-dark" style="border-radius: 20px; overflow: hidden;">
-            <div class="modal-header border-0 pb-0">
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body text-center pt-0 pb-4 px-4">
-                <div class="mb-3">
-                    <img src="https://raw.githubusercontent.com/ichsanleonhart/add-ons_webapps_khanza/main/qris-ichsan.png" class="img-fluid rounded-3 shadow-sm" style="max-width: 280px;" alt="QRIS Donasi">
-                </div>
-                <h5 class="fw-bold text-primary mb-3">Apresiasi & Dukungan</h5>
-                <p class="text-muted small px-2 mb-4" style="line-height: 1.6;">
-                    Halo rekan-rekan IT dan Super Admin. Terima kasih telah menggunakan aplikasi pemetaan Satu Sehat ini.<br><br>
-                    Jika aplikasi ini membantu mempermudah pekerjaan Anda, mohon bantuannya untuk sedikit memberikan apresiasi / "traktiran kopi" agar saya tetap semangat melakukan maintenance dan update fitur lainnya. Berapapun dukungan Anda sangat berarti bagi kelangsungan pengembangan aplikasi ini.<br><br>
-                    <strong>Terima kasih banyak atas dukungannya! 🙏</strong>
-                </p>
-                <div class="d-grid gap-2">
-                    <a href="https://saweria.co/ichsanleonhart" target="_blank" class="btn btn-primary py-2 fw-bold" style="background:linear-gradient(135deg, #4f46e5, #7c3aed); border:none;">
-                        <i class="fa-solid fa-heart me-2"></i> Dukung via Saweria.co
-                    </a>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+<div style="display:none;">https://raw.githubusercontent.com/ichsanleonhart/add-ons_webapps_khanza/main/qris-ichsan.png</div>
 </body>
 </html>

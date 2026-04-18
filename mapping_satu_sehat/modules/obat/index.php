@@ -57,9 +57,14 @@ check_module_access('satu_sehat_mapping_obat'); // RBAC Guard
 </nav>
 
 <div class="container-fluid px-4">
-    <div class="page-header">
-        <h4><i class="fa-solid fa-pills me-2"></i> Mapping Obat ke KFA Satu Sehat</h4>
-        <p>Klik tombol Mapping pada baris obat untuk menetapkan kode KFA, rute, dan satuan.</p>
+    <div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-3">
+        <div>
+            <h4><i class="fa-solid fa-pills me-2"></i> Mapping Obat ke KFA Satu Sehat</h4>
+            <p>Klik tombol Mapping pada baris obat untuk menetapkan kode KFA, rute, dan satuan.</p>
+        </div>
+        <a href="../referensi/index.php" target="_blank" class="btn btn-light text-primary fw-bold px-4 rounded-pill shadow-sm" style="font-size: 0.9rem;">
+            <i class="fa fa-database me-2"></i> Master Referensi Data
+        </a>
     </div>
 
     <!-- Panel Pencarian Server-Side -->
@@ -128,6 +133,20 @@ check_module_access('satu_sehat_mapping_obat'); // RBAC Guard
                         <a href="https://kfa-browser.kemkes.go.id" target="_blank" class="btn btn-outline-secondary" title="Buka KFA Browser">
                             <i class="fa fa-external-link-alt"></i>
                         </a>
+                    </div>
+                    <!-- Badge sumber data, loading state, dan tombol resusitasi -->
+                    <div class="mt-1 d-flex align-items-center gap-2 flex-wrap" id="kfa_obat_badge_row">
+                        <span id="kfa_source_badge" class="badge bg-secondary" style="font-size:.7rem;">
+                            <i class="fa fa-database me-1"></i>Sumber: Database Lokal
+                        </span>
+                        <span id="kfa_autofill_notice" class="text-success small" style="display:none;font-size:.72rem;">
+                            <i class="fa fa-magic me-1"></i>Rute, Bentuk, &amp; Satuan otomatis terisi dari API KFA
+                        </span>
+                        <button type="button" id="btnRetryKfaObat"
+                            style="display:none;font-size:.72rem;padding:2px 10px;border-radius:20px;"
+                            class="btn btn-sm btn-warning fw-semibold">
+                            <i class="fa fa-rotate-right me-1"></i>Coba Ulang API
+                        </button>
                     </div>
                     <input type="hidden" id="kfa_display_hidden">
                     <input type="text" class="form-control mt-2" id="kfa_display_manual" placeholder="Atau ketik nama KFA manual jika tidak ditemukan...">
@@ -312,7 +331,38 @@ $(function() {
     $('.select2-static').select2({ theme: 'bootstrap-5', dropdownParent: $('#modalMap') });
     $('.select2-tags').select2({ theme: 'bootstrap-5', dropdownParent: $('#modalMap'), tags: true });
 
-    // 4. Select2 KFA (AJAX Search)
+    // 4. Select2 KFA (AJAX Search) — dengan loading indicator, fallback notice, dan retry
+    var kfaLastSource   = 'database';
+    var kfaLastTerm     = '';
+
+    // Helper: update badge sesuai state
+    function kfaSetBadge(state) {
+        var badge = $('#kfa_source_badge');
+        var retry = $('#btnRetryKfaObat');
+        badge.removeClass('bg-secondary bg-success bg-warning bg-info text-dark');
+        switch (state) {
+            case 'loading':
+                badge.addClass('bg-info')
+                    .html('<i class="fa fa-spinner fa-spin me-1"></i>Menghubungi API KFA Kemenkes...');
+                retry.hide();
+                break;
+            case 'api':
+                badge.addClass('bg-success')
+                    .html('<i class="fa fa-cloud me-1"></i>Sumber: API KFA Kemenkes');
+                retry.hide();
+                break;
+            case 'fallback':
+                badge.addClass('bg-warning text-dark')
+                    .html('<i class="fa fa-triangle-exclamation me-1"></i>API KFA gagal &mdash; menggunakan Database Lokal');
+                retry.show();
+                break;
+            default: // 'database'
+                badge.addClass('bg-secondary')
+                    .html('<i class="fa fa-database me-1"></i>Sumber: Database Lokal');
+                retry.hide();
+        }
+    }
+
     $('#select_kfa').select2({
         theme: 'bootstrap-5',
         dropdownParent: $('#modalMap'),
@@ -321,13 +371,114 @@ $(function() {
         ajax: {
             url: 'ajax.php?action=search_kfa',
             dataType: 'json',
-            delay: 250,
-            processResults: function(data) { return { results: data.results }; },
-            cache: true
+            delay: 300,
+            data: function(params) {
+                kfaLastTerm = params.term; // Simpan term untuk retry
+                return { term: params.term };
+            },
+            beforeSend: function() {
+                kfaSetBadge('loading');
+                $('#kfa_autofill_notice').hide();
+            },
+            processResults: function(data) {
+                kfaLastSource = data.source || 'database';
+                if (kfaLastSource === 'api') {
+                    kfaSetBadge('api');
+                } else if (kfaLastSource === 'fallback') {
+                    kfaSetBadge('fallback');
+                } else {
+                    kfaSetBadge('database');
+                }
+                return { results: data.results };
+            },
+            error: function() {
+                kfaSetBadge('fallback');
+            },
+            cache: false
         }
     }).on('select2:select', function(e) {
-        $('#kfa_display_hidden').val(e.params.data.display_name);
-        $('#kfa_display_manual').val(e.params.data.display_name);
+        var d = e.params.data;
+        $('#kfa_display_hidden').val(d.display_name);
+        $('#kfa_display_manual').val(d.display_name);
+
+        // AUTO-FILL dari API jika sumbernya API dan ada data
+        if (kfaLastSource === 'api') {
+            var didAutofill = false;
+
+            // Auto-fill Bentuk Sediaan (form_code harus match option di select2-static)
+            if (d.form_code && d.form_display) {
+                var formVal = d.form_code + '|' + d.form_display;
+                // Cek apakah option ada
+                if ($('#select_form option[value="' + formVal + '"]').length > 0) {
+                    $('#select_form').val(formVal).trigger('change');
+                    didAutofill = true;
+                } else {
+                    // Coba partial match pada kode saja
+                    $('#select_form option').each(function() {
+                        if ($(this).val().indexOf(d.form_code) === 0) {
+                            $('#select_form').val($(this).val()).trigger('change');
+                            didAutofill = true;
+                            return false;
+                        }
+                    });
+                }
+            }
+
+            // Auto-fill Rute Pemberian (route_code match pada value 'CODE|Display')
+            if (d.route_code) {
+                $('#select_route option').each(function() {
+                    if ($(this).val().indexOf(d.route_code) === 0) {
+                        $('#select_route').val($(this).val()).trigger('change');
+                        didAutofill = true;
+                        return false;
+                    }
+                });
+            }
+
+            // Auto-fill Satuan Numerator (ucum_code)
+            if (d.ucum_code) {
+                if ($('#select_numerator option[value="' + d.ucum_code + '"]').length > 0) {
+                    $('#select_numerator').val(d.ucum_code).trigger('change');
+                    didAutofill = true;
+                }
+            }
+
+            if (didAutofill) {
+                $('#kfa_autofill_notice').show();
+            } else {
+                $('#kfa_autofill_notice').hide();
+            }
+        } else {
+            $('#kfa_autofill_notice').hide();
+        }
+    });
+
+    // Tombol Coba Ulang (Resusitasi) KFA API — obat
+    $('#btnRetryKfaObat').on('click', function() {
+        var btn = $(this);
+        btn.html('<i class="fa fa-spinner fa-spin me-1"></i>Memperbarui token...').prop('disabled', true);
+        $.post('ajax.php?action=refresh_kfa_token', { csrf_token: CSRF_TOKEN }, function(r) {
+            btn.prop('disabled', false);
+            if (r.status === 'success') {
+                kfaSetBadge('database'); // Reset ke idle
+                btn.hide();
+                // Tunjukkan toast sukses singkat
+                var toast = $('<span>').addClass('badge bg-success ms-1').css('font-size', '.72rem')
+                    .html('<i class="fa fa-check me-1"></i>Token diperbarui! Cari obat kembali.')
+                    .appendTo('#kfa_obat_badge_row');
+                setTimeout(function() { toast.fadeOut(400, function() { $(this).remove(); }); }, 3000);
+            } else {
+                btn.html('<i class="fa fa-rotate-right me-1"></i>Coba Ulang API');
+                Swal.fire({
+                    icon: 'error', title: 'Gagal Refresh Token',
+                    text: r.message,
+                    confirmButtonText: 'Mengerti'
+                });
+            }
+        }, 'json').fail(function() {
+            btn.html('<i class="fa fa-rotate-right me-1"></i>Coba Ulang API').prop('disabled', false);
+            Swal.fire('Error', 'Koneksi server gagal saat refresh token.', 'error');
+        });
     });
 
     // 5. Buka Modal
@@ -336,6 +487,12 @@ $(function() {
         $('#m_kode_brng').val(data.kode_brng);
         $('#m_nama_brng_label').text(data.nama_brng);
         $('#m_kode_brng_label').text(data.kode_brng);
+
+        // Reset badge sumber & notif auto-fill
+        kfaLastSource = 'database';
+        kfaSetBadge('database');
+        $('#kfa_autofill_notice').hide();
+        $('#btnRetryKfaObat').hide();
 
         $('#select_kfa').val(null).trigger('change');
         if (data.obat_code) {

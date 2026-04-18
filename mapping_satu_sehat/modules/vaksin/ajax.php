@@ -121,13 +121,99 @@ try {
     }
 
     // ========================================================
-    // 2. SEARCH KFA
+    // 2. SEARCH KFA (vaksin) — Dual Mode: API / Database
     // ========================================================
     if ($action === 'search_kfa') {
         $q = isset($_GET['q']) ? trim($_GET['q']) : (isset($_GET['term']) ? trim($_GET['term']) : '');
-        $stmt = $pdo->prepare("SELECT kfa_code AS id, CONCAT(kfa_code, ' - ', display_name) AS text, display_name FROM satu_sehat_ref_kfa WHERE kfa_code LIKE :q OR display_name LIKE :q LIMIT 50");
+
+        // Baca mode dari credential JSON
+        require_once dirname(__DIR__) . '/kfa_api_helper.php';
+        $cred       = kfa_load_credential();
+        $searchMode = ($cred && !empty($cred['kfa_search_mode'])) ? $cred['kfa_search_mode'] : 'database';
+
+        // ---- Mode API ----
+        $isFallback = false;
+        if ($searchMode === 'api' && $cred && !empty($cred['client_id'])) {
+            $token = kfa_get_valid_token($cred);
+            if ($token !== null) {
+                $urls = kfa_get_base_urls($cred);
+                // Search langsung dengan keyword — API KFA akan return semua farmasi termasuk vaksin
+                $url = $urls['kfa_v2'] . '/products/all?' . http_build_query([
+                    'page'         => 1,
+                    'size'         => 20,
+                    'product_type' => 'farmasi',
+                    'keyword'      => $q,
+                ]);
+                $data = kfa_http_get($url, $token);
+
+                if ($data !== null) {
+                    $results = [];
+                    $items   = $data['data'] ?? [];
+                    foreach ($items as $item) {
+                        $kfa_code = $item['kfa_code'] ?? '';
+                        $name     = $item['name'] ?? ($item['product_template_name'] ?? '');
+                        if (empty($kfa_code) || empty($name)) continue;
+
+                        $rute_code = $item['rute_pemberian']['code'] ?? null;
+                        $rute_name = $item['rute_pemberian']['name'] ?? null;
+                        $route     = kfa_normalize_route($rute_code, $rute_name);
+                        $ucum_code = $item['ucum']['cs_code'] ?? '';
+
+                        $results[] = [
+                            'id'           => $kfa_code,
+                            'text'         => $kfa_code . ' — ' . $name,
+                            'display_name' => $name,
+                            'route_code'   => $route['code'],
+                            'route_display'=> $route['display'],
+                            'ucum_code'    => $ucum_code,
+                        ];
+                    }
+                    echo json_encode(['results' => $results, 'source' => 'api']);
+                    exit;
+                }
+            }
+            // API gagal → catat sebagai fallback
+            $isFallback = true;
+        }
+
+        // ---- Mode Database (atau fallback) ----
+        $stmt = $pdo->prepare(
+            "SELECT kfa_code AS id,
+                    CONCAT(kfa_code, ' - ', display_name) AS text,
+                    display_name,
+                    '' as route_code,
+                    '' as route_display,
+                    '' as ucum_code
+             FROM satu_sehat_ref_kfa
+             WHERE kfa_code LIKE :q OR display_name LIKE :q
+             LIMIT 50"
+        );
         $stmt->execute([':q' => "%$q%"]);
-        echo json_encode(['results' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
+        echo json_encode(['results' => $stmt->fetchAll(PDO::FETCH_ASSOC), 'source' => $isFallback ? 'fallback' : 'database']);
+        exit;
+    }
+
+    // ========================================================
+    // 2b. REFRESH KFA TOKEN (resusitasi)
+    // ========================================================
+    if ($action === 'refresh_kfa_token') {
+        validate_csrf();
+        require_once dirname(__DIR__) . '/kfa_api_helper.php';
+        $cred = kfa_load_credential();
+        if (!$cred || empty($cred['client_id']) || empty($cred['client_secret'])) {
+            echo json_encode(['status' => 'error', 'message' => 'Credential belum dikonfigurasi oleh Super Admin.']);
+            exit;
+        }
+        unset($_SESSION[KFA_SESSION_TOKEN_KEY], $_SESSION[KFA_SESSION_EXPIRY_KEY]);
+        $urls  = kfa_get_base_urls($cred);
+        $token = kfa_fetch_token($cred, $urls);
+        if ($token === null) {
+            echo json_encode(['status' => 'error', 'message' => 'Gagal mendapatkan token baru dari API Kemenkes. Periksa koneksi server dan credential.']);
+            exit;
+        }
+        $_SESSION[KFA_SESSION_TOKEN_KEY]  = $token;
+        $_SESSION[KFA_SESSION_EXPIRY_KEY] = time() + (55 * 60);
+        echo json_encode(['status' => 'success', 'message' => 'Token KFA berhasil diperbarui! Silakan cari vaksin kembali.']);
         exit;
     }
 

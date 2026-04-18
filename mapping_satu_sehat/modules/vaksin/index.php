@@ -46,9 +46,14 @@ check_module_access('satu_sehat_mapping_vaksin');
 </nav>
 
 <div class="container-fluid px-4">
-    <div class="page-header">
-        <h4><i class="fa-solid fa-syringe me-2"></i> Mapping Vaksin ke Referensi Satu Sehat</h4>
-        <p>Petakan kode vaksin RS ke kode CVX/KFA, rute pemberian, dan dosis baku Satu Sehat.</p>
+    <div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-3">
+        <div>
+            <h4><i class="fa-solid fa-syringe me-2"></i> Mapping Vaksin ke Referensi Satu Sehat</h4>
+            <p>Petakan kode vaksin RS ke kode CVX/KFA, rute pemberian, dan dosis baku Satu Sehat.</p>
+        </div>
+        <a href="../referensi/index.php" target="_blank" class="btn btn-light" style="color: #059669; font-weight: bold; padding: 0.5rem 1.5rem; border-radius: 50px; font-size: 0.9rem;">
+            <i class="fa fa-database me-2"></i> Master Referensi Data
+        </a>
     </div>
     <div class="card mb-3">
         <div class="card-body">
@@ -112,6 +117,20 @@ check_module_access('satu_sehat_mapping_vaksin');
                         <a href="https://kfa-browser.kemkes.go.id" target="_blank" class="btn btn-outline-secondary" title="Buka KFA Browser">
                             <i class="fa fa-external-link-alt"></i>
                         </a>
+                    </div>
+                    <!-- Badge sumber data, loading state, dan tombol resusitasi -->
+                    <div class="mt-1 d-flex align-items-center gap-2 flex-wrap" id="kfa_vaksin_badge_row">
+                        <span id="kfa_vaksin_source_badge" class="badge bg-secondary" style="font-size:.7rem;">
+                            <i class="fa fa-database me-1"></i>Sumber: Database Lokal
+                        </span>
+                        <span id="kfa_vaksin_autofill_notice" class="text-success small" style="display:none;font-size:.72rem;">
+                            <i class="fa fa-magic me-1"></i>Rute &amp; Satuan Dosis otomatis terisi dari API KFA
+                        </span>
+                        <button type="button" id="btnRetryKfaVaksin"
+                            style="display:none;font-size:.72rem;padding:2px 10px;border-radius:20px;"
+                            class="btn btn-sm btn-warning fw-semibold">
+                            <i class="fa fa-rotate-right me-1"></i>Coba Ulang API
+                        </button>
                     </div>
                     <div class="form-text">Masukkan kode KFA atau CVX. Otomatis menarik dari referensi KFA Satu Sehat Kemenkes.</div>
                 </div>
@@ -244,7 +263,37 @@ $(function() {
     $('#btnCariServer').click(function(){table.ajax.reload();});
     $('#keyword_vaksin').on('keyup',function(e){if(e.key==='Enter')table.ajax.reload();});
 
-    // Select2 config for Vaksin Code
+    // Select2 config for Vaksin Code — dengan loading indicator, fallback notice, retry
+    var kfaVaksinLastSource = 'database';
+    var kfaVaksinLastTerm   = '';
+
+    function kfaSetBadgeVaksin(state) {
+        var badge = $('#kfa_vaksin_source_badge');
+        var retry = $('#btnRetryKfaVaksin');
+        badge.removeClass('bg-secondary bg-success bg-warning bg-info text-dark');
+        switch (state) {
+            case 'loading':
+                badge.addClass('bg-info')
+                    .html('<i class="fa fa-spinner fa-spin me-1"></i>Menghubungi API KFA Kemenkes...');
+                retry.hide();
+                break;
+            case 'api':
+                badge.addClass('bg-success')
+                    .html('<i class="fa fa-cloud me-1"></i>Sumber: API KFA Kemenkes');
+                retry.hide();
+                break;
+            case 'fallback':
+                badge.addClass('bg-warning text-dark')
+                    .html('<i class="fa fa-triangle-exclamation me-1"></i>API KFA gagal &mdash; menggunakan Database Lokal');
+                retry.show();
+                break;
+            default:
+                badge.addClass('bg-secondary')
+                    .html('<i class="fa fa-database me-1"></i>Sumber: Database Lokal');
+                retry.hide();
+        }
+    }
+
     $('#vaksin_code_input').select2({
         theme: 'bootstrap-5',
         dropdownParent: $('#modalMappingVaksin'),
@@ -253,12 +302,79 @@ $(function() {
         ajax: {
             url: 'ajax.php?action=search_kfa',
             dataType: 'json',
-            delay: 250,
-            processResults: function(data) { return { results: data.results }; },
-            cache: true
+            delay: 300,
+            data: function(params) {
+                kfaVaksinLastTerm = params.term;
+                return { term: params.term };
+            },
+            beforeSend: function() {
+                kfaSetBadgeVaksin('loading');
+                $('#kfa_vaksin_autofill_notice').hide();
+            },
+            processResults: function(data) {
+                kfaVaksinLastSource = data.source || 'database';
+                if (kfaVaksinLastSource === 'api') {
+                    kfaSetBadgeVaksin('api');
+                } else if (kfaVaksinLastSource === 'fallback') {
+                    kfaSetBadgeVaksin('fallback');
+                } else {
+                    kfaSetBadgeVaksin('database');
+                }
+                return { results: data.results };
+            },
+            error: function() { kfaSetBadgeVaksin('fallback'); },
+            cache: false
         }
     }).on('select2:select', function(e) {
-        $('#vaksin_display_input').val(e.params.data.display_name);
+        var d = e.params.data;
+        $('#vaksin_display_input').val(d.display_name);
+
+        // AUTO-FILL dari API
+        if (kfaVaksinLastSource === 'api') {
+            var didAutofill = false;
+            if (d.route_code) {
+                if ($('#vaksin_route_select option[value="' + d.route_code + '"]').length > 0) {
+                    $('#vaksin_route_select').val(d.route_code);
+                    didAutofill = true;
+                }
+            }
+            if (d.ucum_code) {
+                if ($('#dose_qty_unit_select option[value="' + d.ucum_code + '"]').length > 0) {
+                    $('#dose_qty_unit_select').val(d.ucum_code);
+                    didAutofill = true;
+                }
+            }
+            if (didAutofill) {
+                $('#kfa_vaksin_autofill_notice').show();
+            } else {
+                $('#kfa_vaksin_autofill_notice').hide();
+            }
+        } else {
+            $('#kfa_vaksin_autofill_notice').hide();
+        }
+    });
+
+    // Tombol Coba Ulang (Resusitasi) KFA API — vaksin
+    $('#btnRetryKfaVaksin').on('click', function() {
+        var btn = $(this);
+        btn.html('<i class="fa fa-spinner fa-spin me-1"></i>Memperbarui token...').prop('disabled', true);
+        $.post('ajax.php?action=refresh_kfa_token', { csrf_token: CSRF_TOKEN }, function(r) {
+            btn.prop('disabled', false);
+            if (r.status === 'success') {
+                kfaSetBadgeVaksin('database');
+                btn.hide();
+                var toast = $('<span>').addClass('badge bg-success ms-1').css('font-size', '.72rem')
+                    .html('<i class="fa fa-check me-1"></i>Token diperbarui! Cari vaksin kembali.')
+                    .appendTo('#kfa_vaksin_badge_row');
+                setTimeout(function() { toast.fadeOut(400, function() { $(this).remove(); }); }, 3000);
+            } else {
+                btn.html('<i class="fa fa-rotate-right me-1"></i>Coba Ulang API');
+                Swal.fire({ icon: 'error', title: 'Gagal Refresh Token', text: r.message });
+            }
+        }, 'json').fail(function() {
+            btn.html('<i class="fa fa-rotate-right me-1"></i>Coba Ulang API').prop('disabled', false);
+            Swal.fire('Error', 'Koneksi server gagal saat refresh token.', 'error');
+        });
     });
 
     // Buka modal & isi data existing
@@ -267,7 +383,13 @@ $(function() {
         $('#m_kode_brng_vaksin').val(d.kode_brng);
         $('#m_nama_vaksin').text(d.nama_brng);
         $('#m_kode_vaksin_label').text(d.kode_brng);
-        
+
+        // Reset badge sumber & notif auto-fill
+        kfaVaksinLastSource = 'database';
+        kfaSetBadgeVaksin('database');
+        $('#kfa_vaksin_autofill_notice').hide();
+        $('#btnRetryKfaVaksin').hide();
+
         $('#vaksin_code_input').val(null).trigger('change');
         if (d.vaksin_code) {
             var opt = new Option(d.vaksin_code + ' - ' + d.vaksin_display, d.vaksin_code, true, true);
