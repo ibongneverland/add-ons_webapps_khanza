@@ -21,7 +21,7 @@ try {
     if ($action === 'load_table') {
         $keyword = isset($_GET['keyword']) ? trim($_GET['keyword']) : '';
 
-        $baseWhere = "d.status = '1'";
+        $baseWhere = "1=1";
         $params = [];
 
         if (!empty($keyword)) {
@@ -35,7 +35,7 @@ try {
         }
 
         // Total
-        $sqlTotal = "SELECT COUNT(*) FROM databarang d LEFT JOIN satu_sehat_mapping_vaksin mv ON d.kode_brng=mv.kode_brng WHERE d.status='1'";
+        $sqlTotal = "SELECT COUNT(*) FROM databarang";
         $recordsTotal = (int)$pdo->query($sqlTotal)->fetchColumn();
 
         $sqlCount = "SELECT COUNT(*) FROM databarang d LEFT JOIN satu_sehat_mapping_vaksin mv ON d.kode_brng=mv.kode_brng WHERE $baseWhere";
@@ -86,7 +86,7 @@ try {
                 $info .= "<span class='badge bg-success'>CVX/KFA</span> <b>" . htmlspecialchars($row['vaksin_code'], ENT_QUOTES, 'UTF-8') . "</b><br>";
                 $info .= "<small class='text-muted'>" . htmlspecialchars(substr($row['vaksin_display'],0,50), ENT_QUOTES, 'UTF-8') . "</small><br>";
                 if ($row['route_code']) $info .= "<b>Rute:</b> " . htmlspecialchars($row['route_display'], ENT_QUOTES, 'UTF-8') . "<br>";
-                if ($row['dose_quantity_code']) $info .= "<b>Dosis:</b> " . htmlspecialchars($row['dose_quantity_code'], ENT_QUOTES, 'UTF-8') . " " . htmlspecialchars($row['dose_quantity_unit'], ENT_QUOTES, 'UTF-8');
+                if ($row['dose_quantity_code']) $info .= "<b>Satuan:</b> " . htmlspecialchars($row['dose_quantity_unit'] ?: $row['dose_quantity_code'], ENT_QUOTES, 'UTF-8') . " (" . htmlspecialchars($row['dose_quantity_code'], ENT_QUOTES, 'UTF-8') . ")";
             } else {
                 $info = "<small class='text-muted'>- Belum dimapping -</small>";
             }
@@ -134,43 +134,14 @@ try {
         // ---- Mode API ----
         $isFallback = false;
         if ($searchMode === 'api' && $cred && !empty($cred['client_id'])) {
-            $token = kfa_get_valid_token($cred);
-            if ($token !== null) {
-                $urls = kfa_get_base_urls($cred);
-                // Search langsung dengan keyword — API KFA akan return semua farmasi termasuk vaksin
-                $url = $urls['kfa_v2'] . '/products/all?' . http_build_query([
-                    'page'         => 1,
-                    'size'         => 20,
-                    'product_type' => 'farmasi',
-                    'keyword'      => $q,
+            $apiResults = kfa_search_from_api($cred, $q, 20);
+
+            if ($apiResults !== null) {
+                echo json_encode([
+                    'results' => $apiResults,
+                    'source'  => 'api'
                 ]);
-                $data = kfa_http_get($url, $token);
-
-                if ($data !== null) {
-                    $results = [];
-                    $items   = $data['data'] ?? [];
-                    foreach ($items as $item) {
-                        $kfa_code = $item['kfa_code'] ?? '';
-                        $name     = $item['name'] ?? ($item['product_template_name'] ?? '');
-                        if (empty($kfa_code) || empty($name)) continue;
-
-                        $rute_code = $item['rute_pemberian']['code'] ?? null;
-                        $rute_name = $item['rute_pemberian']['name'] ?? null;
-                        $route     = kfa_normalize_route($rute_code, $rute_name);
-                        $ucum_code = $item['ucum']['cs_code'] ?? '';
-
-                        $results[] = [
-                            'id'           => $kfa_code,
-                            'text'         => $kfa_code . ' — ' . $name,
-                            'display_name' => $name,
-                            'route_code'   => $route['code'],
-                            'route_display'=> $route['display'],
-                            'ucum_code'    => $ucum_code,
-                        ];
-                    }
-                    echo json_encode(['results' => $results, 'source' => 'api']);
-                    exit;
-                }
+                exit;
             }
             // API gagal → catat sebagai fallback
             $isFallback = true;

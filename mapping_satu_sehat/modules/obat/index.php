@@ -130,7 +130,7 @@ check_module_access('satu_sehat_mapping_obat'); // RBAC Guard
                     <label class="form-label fw-bold text-primary">1. Kode KFA (Kamus Farmasi & Alkes)</label>
                     <div class="input-group">
                         <select class="form-select" id="select_kfa" style="width:85%"></select>
-                        <a href="https://kfa-browser.kemkes.go.id" target="_blank" class="btn btn-outline-secondary" title="Buka KFA Browser">
+                        <a href="https://satusehat.kemkes.go.id/kfa-browser/" target="_blank" class="btn btn-outline-secondary" title="Buka KFA Browser">
                             <i class="fa fa-external-link-alt"></i>
                         </a>
                     </div>
@@ -185,7 +185,7 @@ check_module_access('satu_sehat_mapping_obat'); // RBAC Guard
                 <div class="row">
                     <div class="col-md-6 mb-3">
                         <label class="form-label fw-bold small text-muted">4. Satuan Numerator (Kekuatan)</label>
-                        <select class="form-select select2-tags" id="select_numerator">
+                        <select class="form-select select2-tags" id="select_numerator" style="width:100%;">
                             <option value="">-- Pilih Satuan --</option>
                             <?php
                             $stmt = $pdo->query("SELECT * FROM satu_sehat_ref_numerator ORDER BY code ASC");
@@ -199,7 +199,7 @@ check_module_access('satu_sehat_mapping_obat'); // RBAC Guard
                     </div>
                     <div class="col-md-6 mb-3">
                         <label class="form-label fw-bold small text-muted">5. Satuan Denominator (Penyajian)</label>
-                        <select class="form-select select2-tags" id="select_denominator">
+                        <select class="form-select select2-tags" id="select_denominator" style="width:100%;">
                             <option value="">-- Pilih Satuan --</option>
                             <optgroup label="Sediaan Padat/Lainnya (DrugForm)">
                             <?php
@@ -505,7 +505,15 @@ $(function() {
                 if ($(this).val().startsWith(data.route_code)) $(this).prop('selected', true).trigger('change');
             });
             $('#select_numerator').val(data.numerator_code).trigger('change');
+            if (data.numerator_code && !$('#select_numerator').val()) {
+                 var opt = new Option(data.numerator_code, data.numerator_code, true, true);
+                 $('#select_numerator').append(opt).trigger('change');
+            }
             $('#select_denominator').val(data.denominator_code).trigger('change');
+            if (data.denominator_code && !$('#select_denominator').val()) {
+                 var opt = new Option(data.denominator_code, data.denominator_code, true, true);
+                 $('#select_denominator').append(opt).trigger('change');
+            }
         } else {
             $('#kfa_display_manual').val('');
             $('#select_numerator').val(null).trigger('change');

@@ -32,6 +32,7 @@ try {
                        m.obat_code, m.obat_display,
                        m.form_code, m.form_display,
                        m.route_code, m.route_display,
+                       m.numerator_code, m.numerator_system,
                        m.denominator_code, m.denominator_system
                 FROM databarang d
                 LEFT JOIN satu_sehat_mapping_obat m ON d.kode_brng = m.kode_brng";

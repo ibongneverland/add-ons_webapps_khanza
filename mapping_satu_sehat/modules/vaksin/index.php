@@ -114,7 +114,7 @@ check_module_access('satu_sehat_mapping_vaksin');
                     <label class="form-label fw-bold text-success">1. Kode Vaksin (KFA / CVX)</label>
                     <div class="input-group">
                         <select class="form-select" id="vaksin_code_input" style="width:85%"></select>
-                        <a href="https://kfa-browser.kemkes.go.id" target="_blank" class="btn btn-outline-secondary" title="Buka KFA Browser">
+                        <a href="https://satusehat.kemkes.go.id/kfa-browser/" target="_blank" class="btn btn-outline-secondary" title="Buka KFA Browser">
                             <i class="fa fa-external-link-alt"></i>
                         </a>
                     </div>
@@ -151,7 +151,7 @@ check_module_access('satu_sehat_mapping_vaksin');
                 <div class="row">
                     <div class="col-md-6 mb-3">
                         <label class="form-label fw-bold">4. Rute Pemberian</label>
-                        <select class="form-select" id="vaksin_route_select">
+                        <select class="form-select select2-static" id="vaksin_route_select" style="width:100%;">
                             <option value="">-- Pilih Rute --</option>
                             <?php
                             $stmt = $pdo->query("SELECT * FROM satu_sehat_ref_route");
@@ -164,24 +164,17 @@ check_module_access('satu_sehat_mapping_vaksin');
                         <div class="form-text">System rute: http://www.whocc.no/atc</div>
                     </div>
                     <div class="col-md-6 mb-3">
-                        <label class="form-label fw-bold">5. Dosis <span class="text-danger">*</span> <span class="fw-normal text-muted small">— isi angka jumlah dan pilih satuan</span></label>
-                        <div class="row g-2">
-                            <div class="col-7">
-                                <input type="number" step="any" min="0" class="form-control" id="dose_qty_code_input" placeholder="Angka dosis (mis: 0.5, 1, 5)">
-                            </div>
-                            <div class="col-5">
-                                <select class="form-select" id="dose_qty_unit_select">
-                                    <option value="">-- Pilih Satuan --</option>
-                                    <?php
-                                    $stmtN = $pdo->query("SELECT * FROM satu_sehat_ref_numerator ORDER BY code ASC");
-                                    while ($nu = $stmtN->fetch()) {
-                                        echo "<option value='" . htmlspecialchars($nu['code'], ENT_QUOTES, 'UTF-8') . "'>"
-                                           . htmlspecialchars($nu['code'], ENT_QUOTES, 'UTF-8') . " \u2014 " . htmlspecialchars($nu['display'], ENT_QUOTES, 'UTF-8') . "</option>";
-                                    }
-                                    ?>
-                                </select>
-                            </div>
-                        </div>
+                        <label class="form-label fw-bold">5. Satuan Dosis <span class="text-danger">*</span> <span class="fw-normal text-muted small">— pilih satuan baku vaksin</span></label>
+                        <select class="form-select select2-static" id="dose_qty_code_select" style="width:100%;">
+                            <option value="">-- Pilih Satuan --</option>
+                            <?php
+                            $stmtN = $pdo->query("SELECT * FROM satu_sehat_ref_numerator ORDER BY code ASC");
+                            while ($nu = $stmtN->fetch()) {
+                                echo "<option value='" . htmlspecialchars($nu['code'], ENT_QUOTES, 'UTF-8') . "' data-display='" . htmlspecialchars($nu['display'], ENT_QUOTES, 'UTF-8') . "'>"
+                                   . htmlspecialchars($nu['code'], ENT_QUOTES, 'UTF-8') . " \u2014 " . htmlspecialchars($nu['display'], ENT_QUOTES, 'UTF-8') . "</option>";
+                            }
+                            ?>
+                        </select>
                         <div class="form-text">System dosis: http://unitsofmeasure.org</div>
                     </div>
                 </div>
@@ -263,6 +256,9 @@ $(function() {
     $('#btnCariServer').click(function(){table.ajax.reload();});
     $('#keyword_vaksin').on('keyup',function(e){if(e.key==='Enter')table.ajax.reload();});
 
+    // Select2 untuk form static
+    $('.select2-static').select2({ theme: 'bootstrap-5', dropdownParent: $('#modalMappingVaksin') });
+
     // Select2 config for Vaksin Code — dengan loading indicator, fallback notice, retry
     var kfaVaksinLastSource = 'database';
     var kfaVaksinLastTerm   = '';
@@ -339,8 +335,8 @@ $(function() {
                 }
             }
             if (d.ucum_code) {
-                if ($('#dose_qty_unit_select option[value="' + d.ucum_code + '"]').length > 0) {
-                    $('#dose_qty_unit_select').val(d.ucum_code);
+                if ($('#dose_qty_code_select option[value="' + d.ucum_code + '"]').length > 0) {
+                    $('#dose_qty_code_select').val(d.ucum_code);
                     didAutofill = true;
                 }
             }
@@ -397,10 +393,10 @@ $(function() {
         }
         $('#vaksin_display_input').val(d.vaksin_display||'');
         
-        if(d.route_code) $('#vaksin_route_select').val(d.route_code);
-        else $('#vaksin_route_select').val('');
-        $('#dose_qty_code_input').val(d.dose_qty_code||'');
-        if(d.dose_qty_unit) $('#dose_qty_unit_select').val(d.dose_qty_unit);
+        if(d.route_code) $('#vaksin_route_select').val(d.route_code).trigger('change');
+        else $('#vaksin_route_select').val('').trigger('change');
+        if(d.dose_qty_code) $('#dose_qty_code_select').val(d.dose_qty_code).trigger('change');
+        else $('#dose_qty_code_select').val('').trigger('change');
         new bootstrap.Modal(document.getElementById('modalMappingVaksin')).show();
     });
 
@@ -408,19 +404,19 @@ $(function() {
     $('#btnSimpanVaksin').click(function(){
         // === VALIDASI CLIENT-SIDE ===
         var vaksinKode = ($('#vaksin_code_input').val() || '').trim();
-        var doseQty    = ($('#dose_qty_code_input').val() || '').trim();
-        var doseUnit   = $('#dose_qty_unit_select').val();
+        var doseCode   = $('#dose_qty_code_select').val();
+        var doseUnit   = $('#dose_qty_code_select option:selected').data('display') || doseCode;
 
         if (!vaksinKode) {
             Swal.fire('Peringatan', 'Kode Vaksin KFA wajib dipilih.', 'warning');
             return;
         }
-        if (!doseQty) {
-            Swal.fire('Peringatan', 'Angka dosis wajib diisi (contoh: 0.5 atau 1).\nField "Dosis" di sebelah kiri satuan ' + doseUnit + ' tidak boleh kosong.', 'warning');
-            $('#dose_qty_code_input').addClass('is-invalid').focus();
+        if (!doseCode) {
+            Swal.fire('Peringatan', 'Satuan dosis wajib dipilih (misal: mL).', 'warning');
+            $('#dose_qty_code_select').addClass('is-invalid').focus();
             return;
         }
-        $('#dose_qty_code_input').removeClass('is-invalid');
+        $('#dose_qty_code_select').removeClass('is-invalid');
         // ===========================
 
         var btn=$(this),orig=btn.html();
@@ -434,9 +430,9 @@ $(function() {
             vaksin_system:$('#vaksin_system_select').val(),
             route_code:$('#vaksin_route_select').val(),
             route_display:routeOpt.data('display')||routeOpt.text().split('(')[0].trim(),
-            dose_quantity_code:($('#dose_qty_code_input').val() || '').trim(),
+            dose_quantity_code: doseCode,
             dose_quantity_system:'http://unitsofmeasure.org',
-            dose_quantity_unit:$('#dose_qty_unit_select').val()
+            dose_quantity_unit: doseUnit
         },function(r){
             btn.html(orig).prop('disabled',false);
             if(r.status==='success'){
