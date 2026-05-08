@@ -12,22 +12,41 @@ require_once('includes/functions.php');
 
 $tgl_awal = isset($_GET['tgl_awal']) ? $_GET['tgl_awal'] : date('Y-m-01'); 
 $tgl_akhir = isset($_GET['tgl_akhir']) ? $_GET['tgl_akhir'] : date('Y-m-d');
+
+// Ambil List Penjamin untuk Dropdown
+$penjab_list = [];
+$sql_pj = "SELECT kd_pj, png_jawab FROM penjab WHERE status = '1' ORDER BY png_jawab";
+$res_pj = $koneksi->query($sql_pj);
+if ($res_pj) {
+    while($row = $res_pj->fetch_assoc()) {
+        $penjab_list[] = $row;
+    }
+}
 ?>
 
 <div class="container-fluid">
     <div class="card shadow-sm mb-4">
         <div class="card-body">
-            <h5 class="card-title text-primary">Filter Periode</h5>
+            <h5 class="card-title text-primary">Filter Periode & Penjamin</h5>
             <form id="filterForm" class="row g-3">
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <label class="form-label">Dari Tanggal</label>
                     <input type="date" class="form-control" name="tgl_awal" id="tgl_awal" value="<?php echo $tgl_awal; ?>">
                 </div>
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <label class="form-label">Sampai Tanggal</label>
                     <input type="date" class="form-control" name="tgl_akhir" id="tgl_akhir" value="<?php echo $tgl_akhir; ?>">
                 </div>
-                <div class="col-md-4 d-flex align-items-end">
+                <div class="col-md-3">
+                    <label class="form-label">Penjamin</label>
+                    <select class="form-select" name="kd_pj" id="kd_pj">
+                        <option value="">- Semua Penjamin -</option>
+                        <?php foreach($penjab_list as $pj): ?>
+                            <option value="<?php echo $pj['kd_pj']; ?>"><?php echo $pj['png_jawab']; ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
                     <button type="button" class="btn btn-primary w-100" onclick="loadData()">
                         <i class="fas fa-search me-2"></i> Tampilkan Data
                     </button>
@@ -64,6 +83,7 @@ $tgl_akhir = isset($_GET['tgl_akhir']) ? $_GET['tgl_akhir'] : date('Y-m-d');
                                     <th class="text-center">Jml Pasien Ralan</th>
                                     <th class="text-center">Jml Pasien Ranap</th>
                                     <th class="text-center">Total Volume</th>
+                                    <th class="text-end">Total Billing</th>
                                     <th class="text-center" width="10%">Aksi</th>
                                 </tr>
                             </thead>
@@ -143,21 +163,21 @@ $tgl_akhir = isset($_GET['tgl_akhir']) ? $_GET['tgl_akhir'] : date('Y-m-d');
                 { "data": "ranap", className: "text-center text-warning fw-bold" },
                 { "data": "total", className: "text-center fw-bolder" },
                 { 
+                    "data": "billing", 
+                    className: "text-end fw-bold text-primary", 
+                    render: function(data) { return formatMoney(data); } 
+                },
+                { 
                     "data": null, 
                     className: "text-center",
                     render: function(data, type, row) {
-                        // Tombol untuk membuka modal detail
-                        // row.kd_dokter tidak ada di response API sebelumnya? 
-                        // Kita harus memastikan API utama mengembalikan key arraynya sebagai data.
-                        // API kita sebelumnya me-return object indexed by code, lalu di reindex jadi array.
-                        // Kita perlu menyisipkan kode dokter ke dalam array response.
                         return `<button class="btn btn-sm btn-info text-white" onclick="openDetail('${row.kode}', '${row.nama}')">
                                     <i class="fas fa-list-ul me-1"></i> Detail
                                 </button>`;
                     }
                 }
             ],
-            "order": [[ 3, "desc" ]], 
+            "order": [[ 4, "desc" ]], 
             "pageLength": 25
         });
 
@@ -201,20 +221,15 @@ $tgl_akhir = isset($_GET['tgl_akhir']) ? $_GET['tgl_akhir'] : date('Y-m-d');
     function loadData() {
         var tglAwal = $('#tgl_awal').val();
         var tglAkhir = $('#tgl_akhir').val();
+        var kdPj = $('#kd_pj').val();
 
         $.ajax({
             url: 'api/data_kinerja_dokter.php',
             type: 'GET',
-            data: { tgl_awal: tglAwal, tgl_akhir: tglAkhir },
+            data: { tgl_awal: tglAwal, tgl_akhir: tglAkhir, kd_pj: kdPj },
             dataType: 'json',
             success: function(response) {
                 renderChart(response.chart);
-                
-                // Inject kode dokter ke dalam data tabel agar bisa diklik
-                // Karena API kinerja dokter mengembalikan array of objects, 
-                // tapi di loop PHP sebelumnya kita belum memasukkan 'kode' dokter secara eksplisit ke dalam item array.
-                // Mari kita perbaiki data di client side atau server side. 
-                // Server side lebih baik. *Saya sudah update kode PHP di bawah untuk menyertakan 'kode'*.
                 
                 myTable.clear();
                 myTable.rows.add(response.table);
@@ -227,6 +242,7 @@ $tgl_akhir = isset($_GET['tgl_akhir']) ? $_GET['tgl_akhir'] : date('Y-m-d');
     function openDetail(kdDokter, nmDokter) {
         var tglAwal = $('#tgl_awal').val();
         var tglAkhir = $('#tgl_akhir').val();
+        var kdPj = $('#kd_pj').val();
 
         $('#modalTitleDokter').text(nmDokter);
         $('#modalDetail').modal('show');
@@ -239,7 +255,8 @@ $tgl_akhir = isset($_GET['tgl_akhir']) ? $_GET['tgl_akhir'] : date('Y-m-d');
             data: { 
                 tgl_awal: tglAwal, 
                 tgl_akhir: tglAkhir, 
-                kd_dokter: kdDokter 
+                kd_dokter: kdDokter,
+                kd_pj: kdPj
             },
             dataType: 'json',
             success: function(response) {

@@ -18,9 +18,10 @@ if (!isset($_SESSION['user_id'])) {
 // 1. Ambil Parameter
 $tgl_awal = isset($_GET['tgl_awal']) ? $_GET['tgl_awal'] : date('Y-m-01');
 $tgl_akhir = isset($_GET['tgl_akhir']) ? $_GET['tgl_akhir'] : date('Y-m-d');
+$kd_pj = isset($_GET['kd_pj']) ? $_GET['kd_pj'] : '';
 
 // Array penampung data dokter
-// Format: [ 'KD001' => ['nama' => 'Dr. A', 'ralan' => 10, 'ranap' => 5] ]
+// Format: [ 'KD001' => ['nama' => 'Dr. A', 'ralan' => 10, 'ranap' => 5, 'billing' => 1000000] ]
 $master_data = [];
 
 // -----------------------------------------------------------
@@ -30,18 +31,34 @@ $sql_ralan = "
     SELECT 
         reg_periksa.kd_dokter, 
         dokter.nm_dokter,
-        COUNT(reg_periksa.no_rawat) as jumlah
+        COUNT(reg_periksa.no_rawat) as jumlah,
+        SUM((SELECT SUM(
+            CASE 
+                WHEN billing.status = 'TtlRetur Obat' THEN (billing.totalbiaya * -1)
+                WHEN billing.status = 'TtlPotongan' THEN (billing.totalbiaya * -1)
+                ELSE billing.totalbiaya 
+            END
+        ) FROM billing WHERE billing.no_rawat = reg_periksa.no_rawat)) AS total_billing
     FROM reg_periksa
     INNER JOIN dokter ON reg_periksa.kd_dokter = dokter.kd_dokter
     WHERE 
         reg_periksa.tgl_registrasi BETWEEN ? AND ?
         AND reg_periksa.stts != 'Batal'
         AND reg_periksa.status_lanjut = 'Ralan'
-    GROUP BY reg_periksa.kd_dokter
 ";
 
+if ($kd_pj != '') {
+    $sql_ralan .= " AND reg_periksa.kd_pj = ? ";
+}
+
+$sql_ralan .= " GROUP BY reg_periksa.kd_dokter ";
+
 $stmt = $koneksi->prepare($sql_ralan);
-$stmt->bind_param("ss", $tgl_awal, $tgl_akhir);
+if ($kd_pj != '') {
+    $stmt->bind_param("sss", $tgl_awal, $tgl_akhir, $kd_pj);
+} else {
+    $stmt->bind_param("ss", $tgl_awal, $tgl_akhir);
+}
 $stmt->execute();
 $res_ralan = $stmt->get_result();
 
@@ -52,10 +69,12 @@ while($row = $res_ralan->fetch_assoc()) {
             'nama' => $row['nm_dokter'],
             'ralan' => 0,
             'ranap' => 0,
+            'billing' => 0,
             'total' => 0
         ];
     }
     $master_data[$kd]['ralan'] = (int)$row['jumlah'];
+    $master_data[$kd]['billing'] += (float)$row['total_billing'];
 }
 $stmt->close();
 
@@ -67,18 +86,34 @@ $sql_ranap = "
     SELECT 
         dpjp_ranap.kd_dokter, 
         dokter.nm_dokter,
-        COUNT(dpjp_ranap.no_rawat) as jumlah
+        COUNT(dpjp_ranap.no_rawat) as jumlah,
+        SUM((SELECT SUM(
+            CASE 
+                WHEN billing.status = 'TtlRetur Obat' THEN (billing.totalbiaya * -1)
+                WHEN billing.status = 'TtlPotongan' THEN (billing.totalbiaya * -1)
+                ELSE billing.totalbiaya 
+            END
+        ) FROM billing WHERE billing.no_rawat = reg_periksa.no_rawat)) AS total_billing
     FROM dpjp_ranap
     INNER JOIN dokter ON dpjp_ranap.kd_dokter = dokter.kd_dokter
     INNER JOIN reg_periksa ON dpjp_ranap.no_rawat = reg_periksa.no_rawat
     WHERE 
         reg_periksa.tgl_registrasi BETWEEN ? AND ?
         AND reg_periksa.stts != 'Batal'
-    GROUP BY dpjp_ranap.kd_dokter
 ";
 
+if ($kd_pj != '') {
+    $sql_ranap .= " AND reg_periksa.kd_pj = ? ";
+}
+
+$sql_ranap .= " GROUP BY dpjp_ranap.kd_dokter ";
+
 $stmt = $koneksi->prepare($sql_ranap);
-$stmt->bind_param("ss", $tgl_awal, $tgl_akhir);
+if ($kd_pj != '') {
+    $stmt->bind_param("sss", $tgl_awal, $tgl_akhir, $kd_pj);
+} else {
+    $stmt->bind_param("ss", $tgl_awal, $tgl_akhir);
+}
 $stmt->execute();
 $res_ranap = $stmt->get_result();
 
@@ -90,10 +125,12 @@ while($row = $res_ranap->fetch_assoc()) {
             'nama' => $row['nm_dokter'],
             'ralan' => 0,
             'ranap' => 0,
+            'billing' => 0,
             'total' => 0
         ];
     }
     $master_data[$kd]['ranap'] = (int)$row['jumlah'];
+    $master_data[$kd]['billing'] += (float)$row['total_billing'];
 }
 $stmt->close();
 

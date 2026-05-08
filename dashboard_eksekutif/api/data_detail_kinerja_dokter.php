@@ -15,9 +15,26 @@ if (!isset($_SESSION['user_id'])) {
     http_response_code(403); echo json_encode(['error' => 'Akses ditolak.']); exit;
 }
 
+// Helper function untuk format output
+if (!function_exists('formatRow')) {
+    function formatRow($row) {
+        return [
+            'tgl_reg' => $row['tgl_registrasi'] . ' ' . $row['jam_reg'],
+            'tgl_tutup' => ($row['tgl_tutup']) ? $row['tgl_tutup'] . ' ' . $row['jam_tutup'] : '-',
+            'no_rawat' => $row['no_rawat'],
+            'no_rm' => $row['no_rkm_medis'],
+            'pasien' => $row['nm_pasien'],
+            'penjamin' => $row['png_jawab'],
+            'status' => $row['status_lanjut'],
+            'total' => (float)$row['total_billing']
+        ];
+    }
+}
+
 $tgl_awal = isset($_GET['tgl_awal']) ? $_GET['tgl_awal'] : date('Y-m-01');
 $tgl_akhir = isset($_GET['tgl_akhir']) ? $_GET['tgl_akhir'] : date('Y-m-d');
 $kd_dokter = isset($_GET['kd_dokter']) ? $_GET['kd_dokter'] : '';
+$kd_pj = isset($_GET['kd_pj']) ? $_GET['kd_pj'] : '';
 
 if (empty($kd_dokter)) {
     echo json_encode(['data' => []]);
@@ -57,8 +74,16 @@ $sql_ralan = "
         AND reg_periksa.stts != 'Batal'
 ";
 
+if ($kd_pj != '') {
+    $sql_ralan .= " AND reg_periksa.kd_pj = ? ";
+}
+
 $stmt = $koneksi->prepare($sql_ralan);
-$stmt->bind_param("sss", $kd_dokter, $tgl_awal, $tgl_akhir);
+if ($kd_pj != '') {
+    $stmt->bind_param("ssss", $kd_dokter, $tgl_awal, $tgl_akhir, $kd_pj);
+} else {
+    $stmt->bind_param("sss", $kd_dokter, $tgl_awal, $tgl_akhir);
+}
 $stmt->execute();
 $res = $stmt->get_result();
 while ($row = $res->fetch_assoc()) {
@@ -97,28 +122,22 @@ $sql_ranap = "
         AND reg_periksa.stts != 'Batal'
 ";
 
+if ($kd_pj != '') {
+    $sql_ranap .= " AND reg_periksa.kd_pj = ? ";
+}
+
 $stmt = $koneksi->prepare($sql_ranap);
-$stmt->bind_param("sss", $kd_dokter, $tgl_awal, $tgl_akhir);
+if ($kd_pj != '') {
+    $stmt->bind_param("ssss", $kd_dokter, $tgl_awal, $tgl_akhir, $kd_pj);
+} else {
+    $stmt->bind_param("sss", $kd_dokter, $tgl_awal, $tgl_akhir);
+}
 $stmt->execute();
 $res = $stmt->get_result();
 while ($row = $res->fetch_assoc()) {
     $data[] = formatRow($row);
 }
 $stmt->close();
-
-// Helper function untuk format output
-function formatRow($row) {
-    return [
-        'tgl_reg' => $row['tgl_registrasi'] . ' ' . $row['jam_reg'],
-        'tgl_tutup' => ($row['tgl_tutup']) ? $row['tgl_tutup'] . ' ' . $row['jam_tutup'] : '-',
-        'no_rawat' => $row['no_rawat'],
-        'no_rm' => $row['no_rkm_medis'],
-        'pasien' => $row['nm_pasien'],
-        'penjamin' => $row['png_jawab'],
-        'status' => $row['status_lanjut'],
-        'total' => (float)$row['total_billing']
-    ];
-}
 
 // Urutkan berdasarkan tanggal registrasi descending
 usort($data, function($a, $b) {
