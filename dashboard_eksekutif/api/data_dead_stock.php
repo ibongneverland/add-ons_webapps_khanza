@@ -83,7 +83,7 @@ try {
           FROM riwayat_barang_medis r 
           WHERE r.kode_brng = g.kode_brng 
             AND r.kd_bangsal = g.kd_bangsal 
-            AND r.posisi = 'Keluar' 
+            AND r.keluar > 0 
             AND r.tanggal BETWEEN :cutoff_start AND :cutoff_end
       )";
 

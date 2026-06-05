@@ -123,3 +123,6 @@
   6. `api/data_kunjungan_ralan.php`
   7. 14 file API tambahan: `ajax_pegawai.php`, `akuntansi_jurnal_detail.php`, `data_dashboard.php`, `data_dead_stock.php`, `data_demografi.php`, `data_hutang_obat.php`, `data_indikator_per_bangsal.php`, `data_indikator_per_kelas.php`, `data_indikator_ranap.php`, `data_jasa_medis.php`, `data_laporan_tindakan.php`, `data_stok_farmasi.php`, `data_waktu_tunggu.php`, `db_migrate_jadwal.php`.
 - **[UI/UX]** Penambahan alert informasi pada tab Rawat Inap yang menjelaskan kriteria filter poliklinik berdasarkan Asal Poli/IGD.
+## [v1.5.2] — 05 Juni 2026, 15.25 WIB
+### 🐛 Perbaikan
+- **[Dead Stock]** Memperbaiki bug kritis di mana obat fast moving tetap muncul di laporan dead stock akibat kesalahan referensi enum posisi = 'Keluar'. Logika diubah menggunakan pendeteksian pengeluaran fisik keluar > 0.
