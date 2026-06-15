@@ -1,14 +1,19 @@
 <?php
 
-$host = '192.168.x.x';
+$host = 'localhost';
 $db   = 'sik';
 $user = 'root';
 $pass = '';
 $charset = 'utf8mb4';
 
 // Kemkes RS Online V3 Credentials
-$kemkes_id = "";  //kode fasyankes kemenkes gan
-$kemkes_pass = "";  //masuk ke rs online, lalu set di menu setting aplikasi
+$kemkes_id = ""; //kode fasyankes kemenkes gan
+$kemkes_pass = "";   //masuk ke rs online, lalu set di menu setting aplikasi
+
+// Parameter setting utama (format JSON)
+$siranap_settings = '{
+    "force_sync_interval_seconds": 3600
+}';
 
 $dsn = "mysql:host=$host;dbname=$db;charset=$charset";
 $options = [
