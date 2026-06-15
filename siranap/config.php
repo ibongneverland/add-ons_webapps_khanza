@@ -8,8 +8,8 @@ $charset = 'utf8mb4';
 
 // Parameter setting utama (format JSON) — dapat diedit oleh super admin via dashboard
 $siranap_settings = '{
-    "kemkes_id": "",  
-    "kemkes_pass": "",
+    "kemkes_id": "3213040",
+    "kemkes_pass": "RSUkarina_2020",
     "force_sync_interval_seconds": 3600
 }';
 

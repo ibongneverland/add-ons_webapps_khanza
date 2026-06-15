@@ -79,6 +79,62 @@ if (!isset($_SESSION['siranap_admin'])) {
     exit;
 }
 
+if ($action === 'get_ref_kemenkes') {
+    if (!$kemkes_id || !$kemkes_pass) {
+        echo json_encode(['status' => 'error', 'message' => 'Kredensial Kemkes belum diatur di config.php']);
+        exit;
+    }
+    
+    $url = "https://sirs.kemkes.go.id/fo/index.php/Referensi/tempat_tidur";
+    $dt = new DateTime(null, new DateTimeZone("UTC"));
+    $timestamp = $dt->getTimestamp();
+    
+    $headers = [
+        "X-rs-id: " . $kemkes_id,
+        "X-Timestamp: " . $timestamp,
+        "X-pass: " . $kemkes_pass,
+        "Content-type: application/json"
+    ];
+    
+    $curl = curl_init();
+    curl_setopt($curl, CURLOPT_URL, $url);
+    curl_setopt($curl, CURLOPT_HEADER, false);
+    curl_setopt($curl, CURLOPT_CUSTOMREQUEST, "GET");
+    curl_setopt($curl, CURLOPT_FOLLOWLOCATION, true);
+    curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($curl, CURLOPT_SSL_VERIFYHOST, false);
+    curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($curl, CURLOPT_HTTPHEADER, $headers);
+    curl_setopt($curl, CURLOPT_TIMEOUT, 15);
+    
+    $response = curl_exec($curl);
+    $httpcode = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+    $curl_error = curl_error($curl);
+    curl_close($curl);
+    
+    if ($curl_error) {
+        echo json_encode(['status' => 'error', 'message' => 'CURL Error: ' . $curl_error]);
+        exit;
+    }
+    
+    $dataDecoded = json_decode($response, true);
+    if ($dataDecoded === null) {
+        echo json_encode(['status' => 'error', 'message' => 'Gagal parse JSON dari Kemenkes. Raw: ' . substr($response, 0, 200)]);
+        exit;
+    }
+    
+    if (isset($dataDecoded['tempat_tidur'][0]['message'])) {
+        $inner = json_decode($dataDecoded['tempat_tidur'][0]['message'], true);
+        if (isset($inner['status']) && $inner['status'] === 'false') {
+            echo json_encode(['status' => 'error', 'message' => 'Kemenkes API: ' . ($inner['response'] ?? 'Gagal Autentikasi')]);
+            exit;
+        }
+    }
+    
+    echo json_encode(['status' => 'success', 'data' => $dataDecoded['tempat_tidur'] ?? []]);
+    exit;
+}
+
 if ($action === 'list_bangsal') {
     $stmt = $pdo->query("SELECT kd_bangsal, nm_bangsal FROM bangsal WHERE status = '1' ORDER BY nm_bangsal ASC");
     echo json_encode(['status' => 'success', 'data' => $stmt->fetchAll()]);
@@ -212,7 +268,7 @@ if ($action === 'setup_db') {
             // Table doesn't exist -> Create it
             $createSql = "CREATE TABLE `sirsonline_ketersediaan_kamar` (
                 `id_tt_sirsonline` varchar(15) NOT NULL,
-                `nm_ruang_sirsonline` enum('VVIP','VIP','Kelas Utama','Kelas I','Kelas II','Kelas III','HCU','NICU','Isolasi','Perinatologi') NOT NULL DEFAULT 'Kelas I',
+                `nm_ruang_sirsonline` enum('VVIP','VIP','Kelas Utama','Kelas I','Kelas II','Kelas III','HCU','NICU','Isolasi','Perinatologi','ICU','PICU','RICU','ICCU','KRIS JKN') NOT NULL DEFAULT 'Kelas I',
                 `kd_bangsal` varchar(5) NOT NULL,
                 `covid` enum('0','1') NOT NULL DEFAULT '0',
                 PRIMARY KEY (`id_tt_sirsonline`, `kd_bangsal`, `nm_ruang_sirsonline`),
@@ -236,7 +292,7 @@ if ($action === 'setup_db') {
 
             $requiredCols = [
                 'id_tt_sirsonline' => "varchar(15) NOT NULL",
-                'nm_ruang_sirsonline' => "enum('VVIP','VIP','Kelas Utama','Kelas I','Kelas II','Kelas III','HCU','NICU','Isolasi','Perinatologi') NOT NULL DEFAULT 'Kelas I'",
+                'nm_ruang_sirsonline' => "enum('VVIP','VIP','Kelas Utama','Kelas I','Kelas II','Kelas III','HCU','NICU','Isolasi','Perinatologi','ICU','PICU','RICU','ICCU','KRIS JKN') NOT NULL DEFAULT 'Kelas I'",
                 'kd_bangsal' => "varchar(5) NOT NULL",
                 'covid' => "enum('0','1') NOT NULL DEFAULT '0'"
             ];
@@ -251,6 +307,16 @@ if ($action === 'setup_db') {
                         'column' => $colName,
                         'status' => 'success',
                         'text' => "Kolom `{$colName}` ditambahkan ke tabel `{$tableName}`."
+                    ];
+                } else if ($colName === 'nm_ruang_sirsonline') {
+                    // Always alter nm_ruang_sirsonline to update enum values
+                    $pdo->exec("ALTER TABLE `{$tableName}` MODIFY COLUMN `{$colName}` {$colDef}");
+                    $messages[] = [
+                        'type' => 'alter_modify',
+                        'table' => $tableName,
+                        'column' => $colName,
+                        'status' => 'success',
+                        'text' => "Enum kolom `{$colName}` diperbarui."
                     ];
                 }
             }

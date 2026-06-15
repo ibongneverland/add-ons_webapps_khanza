@@ -324,6 +324,11 @@ $isLoggedIn = isset($_SESSION['siranap_admin']);
                     <option value="NICU">NICU</option>
                     <option value="Isolasi">Isolasi</option>
                     <option value="Perinatologi">Perinatologi</option>
+                    <option value="ICU">ICU</option>
+                    <option value="PICU">PICU</option>
+                    <option value="RICU">RICU</option>
+                    <option value="ICCU">ICCU</option>
+                    <option value="KRIS JKN">KRIS JKN</option>
                 </select>
             </div>
             
@@ -443,7 +448,7 @@ $isLoggedIn = isset($_SESSION['siranap_admin']);
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-    const referensi = [
+    let referensi = [
         {id: '1', name: 'VVIP/ Super VIP'},
         {id: '2', name: 'VIP'},
         {id: '3', name: 'Kelas I'},
@@ -472,8 +477,10 @@ $isLoggedIn = isset($_SESSION['siranap_admin']);
         {id: '37', name: 'Intermediate Ward (IGD)'},
         {id: '38', name: 'ICU Dengan Ventilator'},
         {id: '39', name: 'NICU Dengan Ventilator'},
-        {id: '40', name: 'RICU Dengan Ventilator'},
-        {id: '51', name: 'ICCU/ICVCU Dengan Ventilator'}
+        {id: '40', name: 'PICU Dengan Ventilator'},
+        {id: '50', name: 'RICU Dengan Ventilator'},
+        {id: '51', name: 'ICCU/ICVCU Dengan Ventilator'},
+        {id: '52', name: 'KRIS JKN'}
     ];
 
     let modalInstance = null;
@@ -496,19 +503,55 @@ $isLoggedIn = isset($_SESSION['siranap_admin']);
 
         fetchBranding();
 
-        // Populate referensi
+        // Load bangsal and references
         const selIdTt = document.getElementById('id_tt');
         if (selIdTt) {
-            referensi.forEach(item => {
-                const opt = document.createElement('option');
-                opt.value = item.id;
-                opt.textContent = `${item.id} - ${item.name}`;
-                selIdTt.appendChild(opt);
-            });
             loadBangsal();
-            loadMapping();
+            loadKemenkesReferensi();
         }
     });
+
+    function populateReferensiDropdown() {
+        const selIdTt = document.getElementById('id_tt');
+        if (!selIdTt) return;
+        
+        const currentVal = selIdTt.value;
+        selIdTt.innerHTML = '<option value="">Pilih Kode TT</option>';
+        
+        referensi.forEach(item => {
+            const opt = document.createElement('option');
+            opt.value = item.id;
+            opt.textContent = `${item.id} - ${item.name}`;
+            selIdTt.appendChild(opt);
+        });
+        
+        if (currentVal) {
+            selIdTt.value = currentVal;
+        }
+    }
+
+    function loadKemenkesReferensi() {
+        fetch('api_mapping.php?action=get_ref_kemenkes')
+            .then(res => res.json())
+            .then(res => {
+                if (res.status === 'success' && res.data && res.data.length > 0) {
+                    referensi = res.data.map(item => ({
+                        id: item.kode_tt,
+                        name: item.nama_tt
+                    }));
+                    console.log('Referensi Kemenkes berhasil dimuat secara dinamis.', referensi);
+                } else {
+                    console.warn('Gagal memuat referensi Kemenkes, menggunakan fallback lokal. Pesan:', res.message);
+                }
+                populateReferensiDropdown();
+                loadMapping();
+            })
+            .catch(err => {
+                console.error('Network error saat memuat referensi Kemenkes, menggunakan fallback lokal:', err);
+                populateReferensiDropdown();
+                loadMapping();
+            });
+    }
 
     function handleLogin(e) {
         e.preventDefault();
