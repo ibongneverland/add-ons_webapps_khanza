@@ -18,6 +18,27 @@ if ($action === 'get_setting') {
     exit;
 }
 
+if ($action === 'get_app_settings') {
+    // Public read: returns current app settings from config.php JSON block
+    $configPath = __DIR__ . '/config.php';
+    $configContent = file_get_contents($configPath);
+    // Extract JSON block from $siranap_settings = '{ ... }'
+    if (preg_match("/\\\$siranap_settings\\s*=\\s*'({.*?})';/s", $configContent, $m)) {
+        $parsed = json_decode($m[1], true);
+        if ($parsed !== null) {
+            // Never expose kemkes_pass in plaintext to the client — redact it
+            $safe = $parsed;
+            $safe['kemkes_pass'] = str_repeat('*', strlen($parsed['kemkes_pass'] ?? ''));
+            echo json_encode(['status' => 'success', 'data' => $safe]);
+        } else {
+            echo json_encode(['status' => 'error', 'message' => 'Gagal parse settings JSON']);
+        }
+    } else {
+        echo json_encode(['status' => 'error', 'message' => 'Blok settings tidak ditemukan di config.php']);
+    }
+    exit;
+}
+
 if ($action === 'login') {
     $username = $_POST['username'] ?? '';
     $password = $_POST['password'] ?? '';
@@ -120,6 +141,61 @@ if ($action === 'delete') {
     } catch (\PDOException $e) {
         echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
     }
+    exit;
+}
+
+if ($action === 'save_app_settings') {
+    $kemkes_id_new  = trim($_POST['kemkes_id']  ?? '');
+    $kemkes_pass_new = trim($_POST['kemkes_pass'] ?? '');
+    $interval_new   = (int)($_POST['force_sync_interval_seconds'] ?? 3600);
+
+    if (!$kemkes_id_new) {
+        echo json_encode(['status' => 'error', 'message' => 'Kemkes ID tidak boleh kosong.']);
+        exit;
+    }
+    if ($interval_new < 60) {
+        echo json_encode(['status' => 'error', 'message' => 'Interval minimal 60 detik.']);
+        exit;
+    }
+
+    $configPath    = __DIR__ . '/config.php';
+    $configContent = file_get_contents($configPath);
+
+    // Read existing JSON block from config.php
+    if (!preg_match("/\\\$siranap_settings\\s*=\\s*'({.*?})';/s", $configContent, $m)) {
+        echo json_encode(['status' => 'error', 'message' => 'Blok settings tidak ditemukan di config.php']);
+        exit;
+    }
+    $existing = json_decode($m[1], true) ?? [];
+
+    // Only update kemkes_pass if a real value was sent (not masked ***)
+    $existing['kemkes_id']  = $kemkes_id_new;
+    if ($kemkes_pass_new !== '' && !preg_match('/^\*+$/', $kemkes_pass_new)) {
+        $existing['kemkes_pass'] = $kemkes_pass_new;
+    }
+    $existing['force_sync_interval_seconds'] = $interval_new;
+
+    $newJson = json_encode($existing, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+    // Replace single quotes wrapping with safe escaped content
+    $newBlock = "\$siranap_settings = '" . str_replace("'", "\\'", $newJson) . "';";
+
+    $newConfigContent = preg_replace(
+        "/\\\$siranap_settings\\s*=\\s*'.*?';/s",
+        $newBlock,
+        $configContent
+    );
+
+    if ($newConfigContent === null || $newConfigContent === $configContent) {
+        echo json_encode(['status' => 'error', 'message' => 'Gagal menulis ulang config.php (regex mismatch).']);
+        exit;
+    }
+
+    if (file_put_contents($configPath, $newConfigContent) === false) {
+        echo json_encode(['status' => 'error', 'message' => 'Tidak dapat menyimpan config.php. Periksa izin file.']);
+        exit;
+    }
+
+    echo json_encode(['status' => 'success', 'message' => 'Pengaturan berhasil disimpan.']);
     exit;
 }
 
